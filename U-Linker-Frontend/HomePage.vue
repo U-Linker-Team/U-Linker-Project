@@ -49,7 +49,7 @@
           </div>
         </div>
 
-        <!-- 积分卡片 -->
+        <!-- 积分的卡片 -->
         <div class="points-card">
           <div class="points-info">
             <div class="points-label">
@@ -663,4 +663,5 @@ const handleTaskClick = (type) => {
     max-height: 812px;
   }
 }
+
 </style>
