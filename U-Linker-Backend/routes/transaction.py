@@ -4,6 +4,7 @@ from models import Order, Post, User, Application
 from utils.response import success, error
 from sqlalchemy import or_
 
+# 创建名为 'transaction' 的蓝图，URL 前缀为 '/transaction'
 transaction_bp = Blueprint('transaction', __name__, url_prefix='/transaction')
 
 
@@ -11,13 +12,16 @@ transaction_bp = Blueprint('transaction', __name__, url_prefix='/transaction')
 # SRS 5.1.5.2: 买家直接购买，扣买家的钱
 @transaction_bp.route('/purchase', methods=['POST'])
 def purchase_service():
+    # 获取请求中的 JSON 数据
     data = request.get_json()
     buyer_id = data.get('buyer_id')
     post_id = data.get('post_id')
-
+    
+    # 从数据库查询买家和帖子信息
     buyer = db.session.get(User, buyer_id)
     post = db.session.get(Post, post_id)
-
+    
+    # 验证基本参数是否存在
     if not buyer or not post: return error(message="参数错误")
     if post.post_type != 'service': return error(message="这不是服务，不能直接购买")
     if post.status != 'active': return error(message="手慢了！商品不可用")
@@ -169,4 +173,5 @@ def get_my_involved():
         'pages': pagination.pages,
         'current_page': page,
         'items': [o.to_dict() for o in pagination.items]
+
     })
