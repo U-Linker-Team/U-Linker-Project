@@ -32,7 +32,17 @@ def purchase_service():
         # 1. 扣买家的钱
         buyer.points -= post.price
 
-        # 2. 生成订单
+        
+        # 2.记录积分历史
+        history = PointsHistory(
+            user_id=buyer_id,
+            points_change=-post.price,
+            action='购买服务',
+            description=f"购买了商品 {post.title}"
+        )
+        db.session.add(history)
+        
+        # 3. 生成订单
         new_order = Order(
             buyer_id=buyer_id,  # 买家是消费者
             seller_id=post.author_id,  # 作者是服务提供者
@@ -70,6 +80,15 @@ def apply_for_task():
     if exist:
         return error(message="您已经申请过该任务了")
 
+    # 记录积分历史（如果有相关的积分变动）
+    history = PointsHistory(
+        user_id=applicant_id,
+        points_change=0,  # 无积分变动
+        action="申请悬赏任务",
+        description=f"申请任务 {post.title}"
+    )
+    db.session.add(history)
+    
     app = Application(post_id=post_id, applicant_id=applicant_id)
     db.session.add(app)
     db.session.commit()
@@ -97,10 +116,19 @@ def select_helper():
             status='pending'
         )
 
-        # 2. 更新状态
+        #2. 记录积分历史 - 雇主支付积分给帮手
+        history = PointsHistory(
+            user_id=owner_id,
+            points_change=-post.price,  # 假设任务价格是post.price
+            action="选择帮手",
+            description=f"雇主 {owner_id} 支付积分给帮手 {helper_id}，任务开始"
+        )
+        db.session.add(history)
+        
+        # 3. 更新状态
         post.status = 'trading'  # 任务进行中
 
-        # 3. 标记申请状态为已选中
+        # 4. 标记申请状态为已选中
         app = Application.query.filter_by(post_id=post_id, applicant_id=helper_id).first()
         if app: app.status = 'selected'
 
@@ -141,7 +169,16 @@ def confirm_complete():
         # 转账给卖家(赚钱的人)
         seller = db.session.get(User, order.seller_id)
         seller.points += order.post.price
-
+        
+        # 记录积分历史 - 卖家收到支付积分
+        history = PointsHistory(
+            user_id=order.seller_id,
+            points_change=order.post.price,
+            action="任务完成",
+            description=f"卖家 {order.seller_id} 收到雇主支付的积分，任务已完成"
+        )
+        db.session.add(history)
+        
         order.status = 'completed'
         order.post.status = 'sold'
         db.session.commit()
@@ -228,4 +265,5 @@ def create_order():
     except Exception as e:
         db.session.rollback()
         return error(message=str(e))
+
 
