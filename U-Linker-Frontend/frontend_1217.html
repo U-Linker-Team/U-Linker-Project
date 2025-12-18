@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>U-Linker 校园互助平台</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+  <style>
+    /* 全局样式与滚动条隐藏 */
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+    /* 页面切换动画 */
+    .page-section { display: none; height: 100vh; flex-direction: column; }
+    .page-section.active { display: flex; animation: fadeIn 0.2s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* 按钮禁用样式 */
+    .btn-disabled { background-color: #d1d5db !important; cursor: not-allowed !important; opacity: 0.6; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex justify-center items-center p-0 sm:p-4">
+
+  <div class="w-full sm:w-[375px] h-[100vh] sm:h-[812px] bg-white sm:rounded-xl shadow-lg flex flex-col overflow-hidden relative" id="app-container">
+
+    <div id="view-login" class="page-section active bg-white">
+      <header class="h-16 flex items-center justify-between px-4 border-b border-gray-200 flex-shrink-0">
+        <span class="text-lg font-bold text-blue-600">U-Linker</span>
+        <span class="iconify w-6 h-6 text-blue-600" data-icon="mdi:help-circle-outline"></span>
+      </header>
+      <main class="flex-1 overflow-y-auto hide-scrollbar flex items-center justify-center px-6">
+        <div class="w-full max-w-md space-y-6">
+          <div class="text-center space-y-2">
+            <div class="w-20 h-20 mx-auto bg-blue-100 rounded-full flex items-center justify-center">
+              <span class="iconify w-12 h-12 text-blue-600" data-icon="mdi:account-group"></span>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800">欢迎使用U-Linker</h2>
+            <p class="text-gray-500">校园互助平台，连接你的校园生活</p>
+          </div>
+          <div class="space-y-4">
+            <div class="border rounded-xl p-3 bg-gray-50">
+              <div class="text-xs text-gray-500 mb-1">学号/用户名</div>
+              <input id="login-user" class="w-full bg-transparent focus:outline-none" type="text" value="userA">
+            </div>
+            <div class="border rounded-xl p-3 bg-gray-50">
+              <div class="text-xs text-gray-500 mb-1">密码</div>
+              <input id="login-pass" class="w-full bg-transparent focus:outline-none" type="password" value="pass123456">
+            </div>
+            <button onclick="handleLogin()" class="w-full bg-blue-600 text-white font-medium rounded-full py-3 active:scale-95 transition">登录</button>
+            <div class="flex justify-between text-sm">
+              <span class="text-blue-600 cursor-pointer" onclick="router.push('register')">注册账号</span>
+              <span class="text-gray-500">忘记密码?</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div id="view-register" class="page-section bg-white">
+      <header class="h-16 flex items-center gap-4 px-4 border-b border-gray-200 flex-shrink-0">
+        <span onclick="router.back()" class="iconify w-6 h-6 text-gray-600 cursor-pointer" data-icon="mdi:arrow-left"></span>
+        <h1 class="text-lg font-bold text-gray-800 flex-1">注册账号</h1>
+      </header>
+      <main class="flex-1 overflow-y-auto hide-scrollbar p-6">
+        <div class="space-y-6">
+          <div class="text-center mb-8">
+            <h2 class="text-2xl font-bold text-blue-600">加入 U-Linker</h2>
+            <p class="text-gray-500 text-sm mt-2">完成学生身份认证，开启校园互助</p>
+          </div>
+          <div class="space-y-4">
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-700">用户名</label>
+              <input id="reg-username" type="text" class="w-full p-3 bg-gray-50 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-600 transition" placeholder="设置唯一用户名">
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-700">设置密码</label>
+              <input id="reg-pass" type="password" class="w-full p-3 bg-gray-50 rounded-xl focus:outline-none" placeholder="8位以上含字母数字">
+            </div>
+          </div>
+          <button onclick="handleRegister()" class="w-full bg-blue-600 text-white font-bold rounded-full py-3 shadow-md active:scale-95 transition mt-4">
+            立即注册 (+100积分)
+          </button>
+        </div>
+      </main>
+    </div>
+
+    <div id="view-home" class="page-section bg-white pb-20">
+      <header class="h-14 flex items-center justify-between px-5 border-b border-gray-50 bg-white sticky top-0 z-10 flex-shrink-0">
+        <span class="text-xl font-bold text-blue-600 tracking-tight">U-Linker</span>
+        <div class="flex gap-4">
+          <span class="iconify w-6 h-6 text-gray-600" data-icon="mdi:bell-outline"></span>
+          <span class="iconify w-6 h-6 text-gray-600" data-icon="mdi:magnify"></span>
+        </div>
+      </header>
+
+      <main class="flex-1 overflow-y-auto hide-scrollbar px-5 bg-white pb-6">
+        <div class="mt-5 h-40 rounded-2xl overflow-hidden relative bg-gradient-to-r from-blue-500 to-indigo-600 shadow-md flex items-center justify-center text-white cursor-pointer">
+          <div class="text-center">
+            <h3 class="text-lg font-bold tracking-wide">校园互助新体验</h3>
+            <p class="text-xs text-blue-100 mt-1 bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">查看最新公告 ></p>
+          </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-4">
+          <div onclick="router.pushMarket('need')" class="bg-blue-50 rounded-2xl p-5 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-blue-100 transition-colors border border-blue-100 shadow-sm active:scale-95 transition-transform">
+            <div class="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-sm text-blue-600">
+               <span class="iconify w-8 h-8" data-icon="mdi:hand-extended-outline"></span>
+            </div>
+            <div class="text-center">
+              <h3 class="font-bold text-gray-900 text-lg">我需要</h3>
+              <p class="text-xs text-blue-600 font-medium mt-1">发布悬赏 / 寻求帮助</p>
+            </div>
+          </div>
+
+          <div onclick="router.pushMarket('provide')" class="bg-orange-50 rounded-2xl p-5 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-orange-100 transition-colors border border-orange-100 shadow-sm active:scale-95 transition-transform">
+            <div class="w-14 h-14 bg-white rounded-full flex items-center justify-center shadow-sm text-orange-500">
+               <span class="iconify w-8 h-8" data-icon="mdi:briefcase-outline"></span>
+            </div>
+            <div class="text-center">
+              <h3 class="font-bold text-gray-900 text-lg">我能提供</h3>
+              <p class="text-xs text-orange-500 font-medium mt-1">出售技能 / 赚取积分</p>
+            </div>
+          </div>
+        </div>
+
+        <div onclick="router.push('points')" class="mt-6 bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-5 shadow-lg text-white flex items-center justify-between cursor-pointer">
+          <div>
+            <div class="flex items-center gap-1 text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">
+              <span class="iconify" data-icon="mdi:wallet-outline"></span>
+              当前积分余额
+            </div>
+            <div class="text-3xl font-bold text-yellow-400 font-mono tracking-wide" id="home-balance">100</div>
+          </div>
+          <div class="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center">
+            <span class="iconify w-6 h-6 text-yellow-400" data-icon="mdi:currency-usd"></span>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div id="view-market" class="page-section bg-white pb-20">
+      <header class="bg-white z-20 flex-shrink-0 px-4 pb-2 border-b border-gray-50 pt-2">
+        <div class="h-10 flex items-center justify-center relative mb-2">
+          <h1 class="text-lg font-bold text-gray-900">任务市场</h1>
+        </div>
+        <div class="flex items-center gap-2 mb-4">
+          <div class="flex-1 bg-gray-100 rounded-full flex items-center px-4 py-2">
+             <span class="iconify w-5 h-5 text-gray-400 mr-2" data-icon="mdi:magnify"></span>
+             <input type="text" id="market-search" oninput="renderMarket()" class="bg-transparent w-full text-sm focus:outline-none text-gray-800" placeholder="搜索任务或服务...">
+          </div>
+        </div>
+        <div class="flex gap-4 mb-3">
+          <button id="tab-need" onclick="router.pushMarket('need')" class="flex-1 py-2 rounded-lg font-bold text-sm border flex items-center justify-center gap-1 active:scale-95 transition-transform">
+             <span class="iconify" data-icon="mdi:hand-extended-outline"></span> 我需要
+          </button>
+          <button id="tab-provide" onclick="router.pushMarket('provide')" class="flex-1 py-2 rounded-lg font-bold text-sm border flex items-center justify-center gap-1 active:scale-95 transition-transform">
+             <span class="iconify" data-icon="mdi:briefcase-outline"></span> 我能提供
+          </button>
+        </div>
+      </header>
+
+      <main id="market-list" class="flex-1 overflow-y-auto hide-scrollbar bg-gray-50 px-4 py-4 space-y-3">
+        </main>
+
+      <button onclick="router.push('publish')" class="absolute bottom-40 right-6 w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-300 z-40 active:scale-95 transition-transform">
+        <span class="iconify w-8 h-8 text-white" data-icon="mdi:plus"></span>
+      </button>
+    </div>
+
+    <div id="view-publish" class="page-section bg-white">
+      <header class="h-14 flex items-center justify-between px-4 border-b border-gray-50 bg-white z-20 flex-shrink-0">
+        <span onclick="router.back()" class="iconify w-6 h-6 text-gray-600 cursor-pointer" data-icon="mdi:close"></span>
+        <h1 class="text-lg font-bold text-gray-900">发布</h1>
+        <span class="text-sm text-gray-400 cursor-pointer" onclick="resetPublishForm()">重置</span>
+      </header>
+      <main class="flex-1 overflow-y-auto hide-scrollbar px-5 py-6 bg-white">
+        <div class="flex bg-gray-100 p-1 rounded-xl mb-6">
+          <button id="pub-btn-need" onclick="setPublishMode('need')" class="flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all">悬赏</button>
+          <button id="pub-btn-provide" onclick="setPublishMode('provide')" class="flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all">服务</button>
+        </div>
+
+        <div class="space-y-6">
+          <div class="space-y-2">
+            <label class="text-sm font-bold text-gray-800 block">标题 <span class="text-red-500">*</span></label>
+            <input id="pub-title" class="w-full bg-gray-50 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-100 border border-transparent" placeholder="请输入标题">
+          </div>
+          <div class="space-y-2">
+            <label class="text-sm font-bold text-gray-800 block">描述 <span class="text-red-500">*</span></label>
+            <textarea id="pub-desc" class="w-full h-32 bg-gray-50 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-100 border border-transparent resize-none" placeholder="请详细描述..."></textarea>
+          </div>
+          <div class="space-y-2">
+            <label class="text-sm font-bold text-gray-800 flex justify-between">
+              <span id="pub-points-label">悬赏积分</span>
+              <span class="text-xs text-gray-400">余额: <span class="user-balance-display">100</span></span>
+            </label>
+            <input id="pub-points" type="number" class="w-full bg-gray-50 rounded-xl px-4 py-3.5 font-bold text-blue-600 focus:outline-none" value="20">
+          </div>
+        </div>
+      </main>
+      <div class="p-5 border-t border-gray-100 bg-white z-20">
+        <button onclick="submitPublish()" id="pub-submit-btn" class="w-full bg-blue-600 text-white font-bold rounded-xl py-4 text-lg shadow-lg active:scale-[0.99] transition">立即发布</button>
+      </div>
+    </div>
+
+    <div id="view-detail" class="page-section bg-white">
+      <header class="h-14 flex items-center gap-4 px-4 border-b border-gray-50 bg-white flex-shrink-0">
+        <span onclick="router.back()" class="iconify w-6 h-6 text-gray-600 cursor-pointer" data-icon="mdi:arrow-left"></span>
+        <h1 class="text-lg font-bold text-gray-900">详情</h1>
+      </header>
+      <main id="detail-content" class="flex-1 overflow-y-auto hide-scrollbar px-5 py-6">
+        </main>
+      <div id="detail-footer" class="p-4 border-t border-gray-100 bg-white flex gap-3">
+        </div>
+    </div>
+
+    <div id="view-orders" class="page-section bg-white pb-20">
+      <header class="bg-white z-20 flex-shrink-0">
+        <div class="h-10 flex items-center justify-center relative border-b border-gray-50">
+          <h1 class="text-lg font-bold text-gray-900">订单</h1>
+        </div>
+
+        <div class="flex relative bg-white">
+          <div id="tab-published" onclick="renderOrders('published')" class="flex-1 py-3 flex items-center justify-center cursor-pointer relative z-10">
+            <div id="text-published" class="text-[15px] font-bold text-blue-600">我发布的</div>
+            <span id="badge-published" class="hidden ml-1.5 min-w-[16px] h-[16px] bg-[#FF4D4F] text-white text-[10px] font-bold flex items-center justify-center rounded-full px-1">NEW</span>
+          </div>
+
+          <div id="tab-accepted" onclick="renderOrders('accepted')" class="flex-1 py-3 flex items-center justify-center cursor-pointer relative z-10">
+            <div id="text-accepted" class="text-[15px] font-medium text-gray-500">我接受的</div>
+            <span id="badge-accepted" class="hidden ml-1.5 min-w-[16px] h-[16px] bg-gray-200 text-gray-500 text-[10px] font-bold flex items-center justify-center rounded-full px-1">0</span>
+          </div>
+
+          <div id="tab-indicator" class="absolute bottom-0 left-0 w-1/2 h-[3px] bg-blue-600 transition-all duration-300 ease-in-out z-0"></div>
+        </div>
+        <div class="h-[1px] bg-gray-100 w-full"></div>
+      </header>
+
+      <main id="order-list" class="flex-1 overflow-y-auto hide-scrollbar bg-gray-50 p-4 space-y-3">
+        </main>
+    </div>
+
+    <div id="view-profile" class="page-section bg-gray-50 pb-20">
+       <div class="absolute top-0 left-0 w-full h-48 bg-gradient-to-r from-blue-600 to-blue-500 z-0"></div>
+       <div class="h-8 w-full flex-shrink-0 z-10"></div>
+       <header class="h-12 flex items-center justify-center px-4 z-10 relative">
+        <h1 class="text-lg font-bold text-white">个人中心</h1>
+      </header>
+
+      <main class="flex-1 overflow-y-auto hide-scrollbar px-4 pt-4 pb-4 relative z-10">
+        <div class="bg-white rounded-2xl p-5 shadow-sm flex items-center gap-4 mb-4">
+          <div class="w-16 h-16 rounded-full bg-gray-200 border-2 border-white shadow-md overflow-hidden flex-shrink-0">
+             <span class="iconify w-full h-full text-gray-400 p-2" data-icon="mdi:account"></span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <h2 class="text-xl font-bold text-gray-900 truncate" id="profile-name">User</h2>
+            <div class="flex items-center gap-2 mt-1">
+              <span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full" id="profile-college">计算机学院</span>
+            </div>
+          </div>
+          <button onclick="router.push('profile-edit')" class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-xs font-medium text-gray-600">编辑</button>
+        </div>
+
+        <div onclick="router.push('points')" class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-5 text-white shadow-lg mb-6 flex justify-between items-center cursor-pointer">
+          <div>
+            <div class="text-xs text-gray-400 mb-1">当前积分余额</div>
+            <div class="text-3xl font-bold font-mono tracking-wider user-balance-display">100</div>
+          </div>
+          <div class="flex flex-col items-end">
+             <span class="text-xs text-gray-400">积分明细 ></span>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div onclick="router.push('orders')" class="flex items-center p-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50">
+            <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center mr-3"><span class="iconify text-blue-600" data-icon="mdi:file-document-edit-outline"></span></div>
+            <div class="flex-1 text-sm font-medium">我的发布/接受</div>
+            <span class="iconify text-gray-300" data-icon="mdi:chevron-right"></span>
+          </div>
+          <div onclick="router.push('chat-list')" class="flex items-center p-4 cursor-pointer hover:bg-gray-50">
+             <div class="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center mr-3"><span class="iconify text-green-500" data-icon="mdi:message-text-outline"></span></div>
+             <div class="flex-1 text-sm font-medium">聊天记录</div>
+             <span class="iconify text-gray-300" data-icon="mdi:chevron-right"></span>
+          </div>
+        </div>
+
+        <button onclick="handleLogout()" class="w-full mt-6 py-3 text-sm text-red-500 font-medium bg-white rounded-xl shadow-sm border border-gray-100">退出登录</button>
+      </main>
+    </div>
+
+    <div id="view-profile-edit" class="page-section bg-white">
+      <header class="h-12 flex items-center justify-between px-4 border-b border-gray-100 bg-white z-20 flex-shrink-0">
+        <span onclick="router.back()" class="iconify w-6 h-6 text-gray-600 cursor-pointer" data-icon="mdi:arrow-left"></span>
+        <h1 class="text-lg font-bold text-gray-900">编辑资料</h1>
+        <div class="w-6"></div>
+      </header>
+      <main class="flex-1 px-6 py-6">
+        <div class="space-y-5">
+          <div class="space-y-1">
+            <label class="text-sm font-bold text-gray-700 ml-1">用户名</label>
+            <div class="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+              <input id="edit-name" type="text" class="w-full bg-transparent text-sm font-medium focus:outline-none">
+            </div>
+          </div>
+          <div class="space-y-1">
+            <label class="text-sm font-bold text-gray-700 ml-1">学院</label>
+            <div class="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+              <input id="edit-college" type="text" class="w-full bg-transparent text-sm font-medium focus:outline-none">
+            </div>
+          </div>
+        </div>
+      </main>
+      <footer class="p-4 bg-white border-t border-gray-100 z-20">
+        <button onclick="saveProfile()" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg">保存修改</button>
+      </footer>
+    </div>
+
+    <div id="view-points" class="page-section bg-gray-100">
+      <header class="h-12 flex items-center justify-between px-4 z-10 bg-gray-900 text-white flex-shrink-0">
+        <span onclick="router.back()" class="iconify w-6 h-6 cursor-pointer" data-icon="mdi:arrow-left"></span>
+        <h1 class="text-lg font-bold">积分明细</h1>
+        <div class="w-6"></div>
+      </header>
+      <main class="flex-1 overflow-y-auto hide-scrollbar px-4 pt-4 pb-4">
+        <div class="bg-white rounded-2xl p-6 shadow-lg mb-6 text-center">
+          <div class="text-sm text-gray-500 mb-2">当前可用积分</div>
+          <div class="text-4xl font-bold text-gray-900 font-mono user-balance-display">100</div>
+        </div>
+        <h3 class="font-bold text-gray-800 mb-3 ml-1">最近记录</h3>
+        <div id="points-list" class="space-y-3">
+           </div>
+      </main>
+    </div>
+
+    <div id="view-chat-list" class="page-section bg-white pb-20">
+      <header class="h-12 flex items-center justify-center px-4 border-b border-gray-50 bg-white flex-shrink-0 relative">
+        <span onclick="router.back()" class="iconify w-6 h-6 text-gray-600 cursor-pointer absolute left-4" data-icon="mdi:arrow-left"></span>
+        <h1 class="text-lg font-bold text-gray-900">消息中心</h1>
+      </header>
+      <main id="chat-list-container" class="flex-1 overflow-y-auto hide-scrollbar">
+        </main>
+    </div>
+
+    <div id="view-chat-room" class="page-section bg-gray-100 h-full">
+      <header class="h-12 flex items-center justify-between px-4 bg-white border-b border-gray-200 flex-shrink-0 z-20">
+        <span onclick="router.back()" class="iconify w-6 h-6 text-gray-600 cursor-pointer" data-icon="mdi:arrow-left"></span>
+        <h1 class="text-lg font-bold text-gray-900" id="chat-target-name">聊天对象</h1>
+        <span class="iconify w-6 h-6 text-gray-600" data-icon="mdi:dots-horizontal"></span>
+      </header>
+
+      <main id="chat-messages" class="flex-1 overflow-y-auto hide-scrollbar p-4 space-y-4">
+        </main>
+
+      <footer class="bg-white border-t border-gray-200 p-3 flex items-end gap-2 flex-shrink-0 z-20">
+        <textarea id="chat-input" rows="1" class="flex-1 bg-gray-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none resize-none max-h-24" placeholder="发送消息..."></textarea>
+        <button onclick="handleSend()" class="bg-blue-600 text-white rounded-xl px-4 py-2 text-sm font-bold shadow-sm active:scale-95 transition-transform h-[40px]">发送</button>
+      </footer>
+    </div>
+
+    <div id="bottom-nav" class="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex h-[60px] pb-1 z-50 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] hidden">
+      <div onclick="router.push('home')" class="nav-item w-1/4 flex flex-col items-center justify-center cursor-pointer transition-colors duration-200" id="nav-home">
+        <span class="iconify w-6 h-6 mb-0.5 transition-transform duration-200" data-icon="mdi:compass-outline"></span>
+        <span class="text-[10px] font-medium">首页</span>
+      </div>
+      <div onclick="router.push('market')" class="nav-item w-1/4 flex flex-col items-center justify-center cursor-pointer transition-colors duration-200" id="nav-market">
+        <span class="iconify w-6 h-6 mb-0.5 transition-transform duration-200" data-icon="mdi:file-document-outline"></span>
+        <span class="text-[10px] font-medium">任务</span>
+      </div>
+      <div onclick="router.push('orders')" class="nav-item w-1/4 flex flex-col items-center justify-center cursor-pointer transition-colors duration-200" id="nav-orders">
+        <span class="iconify w-6 h-6 mb-0.5 transition-transform duration-200" data-icon="mdi:cart-outline"></span>
+        <span class="text-[10px] font-medium">订单</span>
+      </div>
+      <div onclick="router.push('profile')" class="nav-item w-1/4 flex flex-col items-center justify-center cursor-pointer transition-colors duration-200" id="nav-profile">
+        <span class="iconify w-6 h-6 mb-0.5 transition-transform duration-200" data-icon="mdi:account-outline"></span>
+        <span class="text-[10px] font-medium">我的</span>
+      </div>
+    </div>
+
+    <div id="modal-success" class="fixed inset-0 bg-black/50 z-[100] hidden items-center justify-center">
+      <div class="bg-white rounded-xl p-6 w-[80%] max-w-sm text-center">
+        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span class="iconify w-10 h-10 text-green-600" data-icon="mdi:check"></span>
+        </div>
+        <h3 class="text-xl font-bold text-gray-900 mb-2">注册成功</h3>
+        <p class="text-gray-500 mb-6">欢迎加入 U-Linker！<br>已获赠 100 初始积分。</p>
+        <button onclick="closeModalToLogin()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl">去登录</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ================= 数据与状态 =================
+    let currentUser = null;
+    let currentMarketFilter = 'need'; // 'need' or 'provide'
+    let currentPubMode = 'need';
+    let currentSessionId = null;
+
+    // 初始数据
+    const data = {
+      posts: [
+        { id: 1, type: 'need', title: '急！求帮忙取东门快递', user: '张同学', college:'计算机学院', points: 20, time: '10分钟前', desc: '有个中件快递，取件码 8-2022，送到 12 栋楼下。', status: '招募中' },
+        { id: 2, type: 'provide', title: '提供PPT美化设计服务', user: '李设计', college:'设计学院', points: 50, time: '30分钟前', desc: '擅长各类风格，保证质量。', status: '上架中' },
+        { id: 3, type: 'need', title: '高数期末辅导', user: '王同学', college:'数学系', points: 100, time: '1小时前', desc: '需要讲一下微积分重点。', status: '招募中' }
+      ],
+      orders: [],
+      points: [
+        { title: '新用户注册奖励', amount: 100, type: 'income', time: '2025-11-01' }
+      ],
+      chats: [
+        { sessionId: 101, userId: 'user_wang', name: '王同学', avatar: '王', lastMsg: '同学你好，请问快递多大？', time: '10:20', unread: 1 },
+        { sessionId: 102, userId: 'user_chen', name: '陈学长', avatar: '陈', lastMsg: '好的，那我先拍下了。', time: '昨天', unread: 0 }
+      ],
+      messages: {
+        101: [
+          { id: 1, sender: 'other', text: '你好，我对你的悬赏感兴趣', time: '10:00' },
+          { id: 2, sender: 'me', text: '你好，是在东门那个驿站', time: '10:05' },
+          { id: 3, sender: 'other', text: '同学你好，请问快递多大？', time: '10:20' }
+        ],
+        102: [
+          { id: 1, sender: 'me', text: '学长，雅思陪练怎么收费？', time: '昨天 14:00' },
+          { id: 2, sender: 'other', text: '30积分一小时，包过', time: '昨天 14:10' },
+          { id: 3, sender: 'other', text: '好的，那我先拍下了。', time: '昨天 14:30' }
+        ]
+      }
+    };
+
+    // ================= 路由逻辑 =================
+    const router = {
+      history: [],
+      push: function(pageId) {
+        this.history.push(pageId);
+        this.show(pageId);
+      },
+      back: function() {
+        if (this.history.length > 1) {
+          this.history.pop();
+          this.show(this.history[this.history.length - 1]);
+        }
+      },
+      show: function(pageId) {
+        document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
+        const target = document.getElementById('view-' + pageId);
+        if(target) target.classList.add('active');
+
+        const nav = document.getElementById('bottom-nav');
+        const mainPages = ['home', 'market', 'orders', 'profile'];
+
+        if (mainPages.includes(pageId)) {
+          nav.style.display = 'flex';
+          updateNavActive(pageId);
+        } else {
+          nav.style.display = 'none';
+        }
+
+        if(pageId === 'market') renderMarket();
+        if(pageId === 'orders') renderOrders('published');
+        if(pageId === 'points') renderPoints();
+        if(pageId === 'profile') updateProfileUI();
+        if(pageId === 'profile-edit') initProfileEdit();
+        if(pageId === 'chat-list') renderChatList();
+        if(pageId === 'chat-room') scrollToBottom();
+      },
+      pushMarket: function(type) {
+        currentMarketFilter = type;
+        this.push('market');
+      }
+    };
+
+    function updateNavActive(pageId) {
+      const navConfig = {
+        'home':    { id: 'nav-home',    activeIcon: 'mdi:compass',       inactiveIcon: 'mdi:compass-outline' },
+        'market':  { id: 'nav-market',  activeIcon: 'mdi:file-document', inactiveIcon: 'mdi:file-document-outline' },
+        'orders':  { id: 'nav-orders',  activeIcon: 'mdi:cart',          inactiveIcon: 'mdi:cart-outline' },
+        'profile': { id: 'nav-profile', activeIcon: 'mdi:account',       inactiveIcon: 'mdi:account-outline' }
+      };
+
+      const activeConfig = navConfig[pageId];
+
+      Object.values(navConfig).forEach(config => {
+        const el = document.getElementById(config.id);
+        const icon = el.querySelector('.iconify');
+
+        if (activeConfig && config.id === activeConfig.id) {
+          el.classList.remove('text-gray-400');
+          el.classList.add('text-blue-600');
+          icon.setAttribute('data-icon', config.activeIcon);
+        } else {
+          el.classList.remove('text-blue-600');
+          el.classList.add('text-gray-400');
+          icon.setAttribute('data-icon', config.inactiveIcon);
+        }
+      });
+    }
+
+    // ================= 业务功能 =================
+
+    function handleLogin() {
+      currentUser = { name: '李晓明', college: '计算机学院', balance: 100 };
+      updateProfileUI();
+      router.push('home');
+    }
+
+    function handleRegister() {
+      const u = document.getElementById('reg-username').value;
+      const p1 = document.getElementById('reg-pass').value;
+      if(!u || !p1) return alert("请填写完整");
+      document.getElementById('modal-success').style.display = 'flex';
+    }
+
+    function closeModalToLogin() {
+      document.getElementById('modal-success').style.display = 'none';
+      router.push('login');
+    }
+
+    function handleLogout() {
+      currentUser = null;
+      router.push('login');
+    }
+
+    function renderMarket() {
+      const btnNeed = document.getElementById('tab-need');
+      const btnProvide = document.getElementById('tab-provide');
+
+      if(currentMarketFilter === 'need') {
+        btnNeed.className = "flex-1 py-2 rounded-lg font-bold text-sm border flex items-center justify-center gap-1 bg-blue-50 text-blue-600 border-blue-100";
+        btnProvide.className = "flex-1 py-2 rounded-lg font-bold text-sm border flex items-center justify-center gap-1 bg-transparent text-gray-500 border-transparent";
+      } else {
+        btnNeed.className = "flex-1 py-2 rounded-lg font-bold text-sm border flex items-center justify-center gap-1 bg-transparent text-gray-500 border-transparent";
+        btnProvide.className = "flex-1 py-2 rounded-lg font-bold text-sm border flex items-center justify-center gap-1 bg-orange-50 text-orange-500 border-orange-100";
+      }
+
+      const list = document.getElementById('market-list');
+      const search = document.getElementById('market-search').value.toLowerCase();
+      list.innerHTML = '';
+
+      // 逻辑修正：悬赏帖如果被接单（状态非‘招募中’），不再显示在市场
+      const filtered = data.posts.filter(p => {
+        const isMatch = p.type === currentMarketFilter && p.title.toLowerCase().includes(search);
+        // 关键过滤：如果是悬赏(need)且状态不是招募中，隐藏
+        if (p.type === 'need' && p.status !== '招募中') return false;
+        return isMatch;
+      });
+
+      filtered.forEach(p => {
+        const colorClass = p.type === 'need' ? 'text-blue-600' : 'text-orange-500';
+        const bgClass = p.type === 'need' ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100';
+        const tagText = p.type === 'need' ? '悬赏' : '服务';
+
+        list.innerHTML += `
+          <div onclick="showDetail(${p.id})" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3 cursor-pointer">
+            <div class="flex justify-between items-start">
+               <div class="flex items-center gap-2">
+                 <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500 text-xs">${p.user[0]}</div>
+                 <div>
+                   <div class="text-sm font-bold text-gray-800">${p.user}</div>
+                   <div class="text-xs text-gray-400">${p.time} · ${p.college}</div>
+                 </div>
+               </div>
+               <div class="${colorClass} font-bold text-lg flex items-baseline">
+                 ${p.points} <span class="text-xs ml-0.5 font-normal">积分</span>
+               </div>
+            </div>
+            <div>
+              <h3 class="font-bold text-gray-900 text-base mb-2 text-left">${p.title}</h3>
+              <div class="flex gap-2">
+                <span class="px-2 py-0.5 ${bgClass} ${colorClass} text-[10px] rounded border">${tagText}</span>
+                <span class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] rounded">${p.status}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    // 详情页逻辑（权限控制）
+    let viewingPostId = null;
+    function showDetail(id) {
+      viewingPostId = id;
+      const post = data.posts.find(p => p.id === id);
+      const container = document.getElementById('detail-content');
+      const footer = document.getElementById('detail-footer');
+
+      const tagColor = post.type === 'need' ? 'text-blue-600' : 'text-orange-500';
+      const isMe = currentUser && post.user === currentUser.name;
+
+      container.innerHTML = `
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">${post.user[0]}</div>
+          <div>
+            <h2 class="text-lg font-bold">${post.user}</h2>
+            <p class="text-xs text-gray-500">${post.college} · ${post.time}</p>
+          </div>
+        </div>
+        <h1 class="text-xl font-bold mb-2">${post.title}</h1>
+        <div class="text-2xl font-bold ${tagColor} mb-6 font-mono">${post.points} 积分</div>
+        <div class="bg-gray-50 p-4 rounded-xl mb-4 text-sm text-gray-600 leading-relaxed min-h-[100px]">
+          <span class="font-bold text-gray-900 block mb-2">详细描述:</span>
+          ${post.desc}
+        </div>
+      `;
+
+      // 按钮逻辑：如果是自己发的帖子
+      if (isMe) {
+        footer.innerHTML = `
+          <button class="flex-1 py-3 border border-red-200 text-red-500 rounded-xl font-bold active:bg-red-50" onclick="alert('删除功能演示')">删除</button>
+          <button class="flex-1 py-3 border border-gray-200 text-gray-600 rounded-xl font-bold active:bg-gray-50" onclick="alert('编辑功能演示')">编辑</button>
+        `;
+      } else {
+        // 如果是别人的帖子
+        const actionBtnText = post.type === 'need' ? '我能帮助' : '立即购买';
+        const actionBtnClass = post.type === 'need' ? 'bg-blue-600' : 'bg-orange-500';
+
+        footer.innerHTML = `
+          <button onclick="startChat('${post.user}')" class="flex-1 py-3 border border-gray-200 rounded-xl text-gray-600 font-bold active:bg-gray-50">私聊</button>
+          <button onclick="handleTrade()" class="flex-[2] py-3 ${actionBtnClass} text-white rounded-xl font-bold shadow-lg active:scale-95">${actionBtnText}</button>
+        `;
+      }
+
+      router.push('detail');
+    }
+
+    function handleTrade() {
+      const post = data.posts.find(p => p.id === viewingPostId);
+
+      if(post.type === 'provide' && currentUser.balance < post.points) {
+         return alert("积分不足！");
+      }
+
+      // 逻辑修正：如果接了悬赏单，把原帖子状态改为'进行中'，使其在市场消失
+      if (post.type === 'need') {
+        post.status = '进行中';
+      }
+
+      // 添加到我的订单（Category: accepted）
+      data.orders.unshift({
+        id: Date.now(),
+        title: post.title,
+        type: post.type,
+        points: post.points,
+        status: post.type === 'need' ? '进行中' : '待确认',
+        category: 'accepted'
+      });
+
+      if(post.type === 'provide') {
+        currentUser.balance -= post.points;
+        data.points.unshift({title: '购买服务', amount: -post.points, type: 'outcome', time: '刚刚'});
+        updateProfileUI();
+      }
+
+      alert("操作成功，请在订单中查看");
+      router.push('orders');
+    }
+
+    function setPublishMode(mode) {
+      currentPubMode = mode;
+      const btnNeed = document.getElementById('pub-btn-need');
+      const btnProvide = document.getElementById('pub-btn-provide');
+      const btnSubmit = document.getElementById('pub-submit-btn');
+
+      if(mode === 'need') {
+        btnNeed.className = "flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all bg-white text-blue-600 shadow-sm";
+        btnProvide.className = "flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all text-gray-500";
+        btnSubmit.className = "w-full bg-blue-600 text-white font-bold rounded-xl py-4 text-lg shadow-lg active:scale-[0.99] transition";
+      } else {
+        btnNeed.className = "flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all text-gray-500";
+        btnProvide.className = "flex-1 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all bg-white text-orange-500 shadow-sm";
+        btnSubmit.className = "w-full bg-orange-500 text-white font-bold rounded-xl py-4 text-lg shadow-lg active:scale-[0.99] transition";
+      }
+    }
+
+    function submitPublish() {
+      const title = document.getElementById('pub-title').value;
+      const desc = document.getElementById('pub-desc').value;
+      const points = parseInt(document.getElementById('pub-points').value);
+
+      if(!title || !desc) return alert("请填写完整");
+      if(currentPubMode === 'need' && points > currentUser.balance) return alert("余额不足");
+
+      if(currentPubMode === 'need') {
+        currentUser.balance -= points;
+        data.points.unshift({title: '发布悬赏冻结', amount: -points, type: 'outcome', time: '刚刚'});
+        updateProfileUI();
+      }
+
+      const newPost = {
+        id: Date.now(),
+        type: currentPubMode,
+        title: title,
+        user: currentUser.name,
+        college: currentUser.college,
+        points: points,
+        time: '刚刚',
+        desc: desc,
+        status: currentPubMode === 'need' ? '招募中' : '上架中'
+      };
+
+      data.posts.unshift(newPost);
+
+      // 添加到我的发布 (Category: published)
+      data.orders.unshift({
+        id: Date.now(),
+        title: title,
+        type: currentPubMode,
+        points: points,
+        status: '发布中',
+        category: 'published'
+      });
+
+      alert("发布成功");
+      router.push('market');
+    }
+
+    function resetPublishForm() {
+      document.getElementById('pub-title').value = '';
+      document.getElementById('pub-desc').value = '';
+      document.getElementById('pub-points').value = 20;
+    }
+
+    // 订单渲染逻辑升级：点击整卡跳转，按钮按需显示
+    function renderOrders(filter) {
+      const list = document.getElementById('order-list');
+      const indicator = document.getElementById('tab-indicator');
+      const textPub = document.getElementById('text-published');
+      const textAcc = document.getElementById('text-accepted');
+
+      if (filter === 'published') {
+        indicator.style.left = '0';
+        textPub.className = "text-[15px] font-bold text-blue-600 transition-colors";
+        textAcc.className = "text-[15px] font-medium text-gray-500 transition-colors";
+      } else {
+        indicator.style.left = '50%';
+        textPub.className = "text-[15px] font-medium text-gray-500 transition-colors";
+        textAcc.className = "text-[15px] font-bold text-blue-600 transition-colors";
+      }
+
+      list.innerHTML = '';
+      const filteredData = data.orders.filter(o => o.category === filter);
+
+      if(filteredData.length === 0) {
+        list.innerHTML = `
+          <div class="flex flex-col items-center justify-center mt-20 opacity-50">
+            <span class="iconify w-16 h-16 text-gray-300" data-icon="mdi:clipboard-text-off-outline"></span>
+            <p class="text-sm text-gray-400 mt-2">暂无${filter === 'published' ? '发布' : '接受'}的订单</p>
+          </div>`;
+        return;
+      }
+
+      filteredData.forEach(o => {
+        const isNeed = o.type === 'need';
+        const barColor = isNeed ? 'bg-blue-500' : 'bg-orange-400';
+        const tagClass = isNeed ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-orange-50 text-orange-500 border-orange-100';
+        const statusClass = isNeed ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50';
+        const tagText = isNeed ? '悬赏' : '服务';
+        const pointsColor = isNeed ? 'text-blue-600' : 'text-orange-500';
+
+        // 按钮逻辑核心：根据 4 种情况判断显示内容
+        let actionBtnHtml = '';
+
+        // 如果已经完成了，统一显示“已完成”文本（可选）
+        if (o.status === '已完成') {
+           actionBtnHtml = `<span class="text-xs font-bold text-gray-400 border border-gray-200 px-2 py-1 rounded">交易已结束</span>`;
+        }
+        else {
+            // 情况1: 我发布的悬赏 -> 我确认完成
+            if (filter === 'published' && isNeed) {
+                actionBtnHtml = `<button onclick="event.stopPropagation(); completeOrder(${o.id})" class="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm active:scale-95">确认完成</button>`;
+            }
+            // 情况2: 我发布的服务 -> 对方确认 (显示提示)
+            else if (filter === 'published' && !isNeed) {
+                actionBtnHtml = `<span class="text-xs text-gray-400">等待买家确认</span>`;
+            }
+            // 情况3: 我接受的悬赏 -> 对方验收 (显示提示)
+            else if (filter === 'accepted' && isNeed) {
+                actionBtnHtml = `<span class="text-xs text-gray-400">等待雇主验收</span>`;
+            }
+            // 情况4: 我接受的服务 -> 我确认完成
+            else if (filter === 'accepted' && !isNeed) {
+                actionBtnHtml = `<button onclick="event.stopPropagation(); completeOrder(${o.id})" class="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm active:scale-95">确认完成</button>`;
+            }
+        }
+
+        // 外层 div 添加 onclick 跳转详情
+        list.innerHTML += `
+          <div onclick="alert('跳转到订单详情页 (模拟)')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden cursor-pointer active:scale-[0.99] transition-transform">
+            <div class="absolute left-0 top-0 bottom-0 w-1 ${barColor}"></div>
+            <div class="flex justify-between items-start mb-2 pl-2">
+              <div class="flex items-center gap-2">
+                <span class="${tagClass} text-[10px] font-bold px-1.5 py-0.5 rounded border">${tagText}</span>
+                <span class="text-xs text-gray-400">刚刚</span>
+              </div>
+              <span class="text-xs font-bold ${statusClass} px-2 py-1 rounded-full">${o.status}</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-sm mb-2 pl-2">${o.title}</h3>
+            <div class="flex justify-between items-center border-t border-gray-50 pt-3 pl-2">
+              <div class="text-sm font-medium text-gray-500">
+                ${isNeed ? '冻结积分' : '服务价格'}: <span class="${pointsColor} font-bold">${o.points}</span>
+              </div>
+              <div class="flex gap-2 items-center">
+                 ${actionBtnHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function completeOrder(id) {
+      // 1. 在数据源中找到该订单
+      const order = data.orders.find(o => o.id === id);
+
+      if (order) {
+        // 2. 修改状态为“已完成”
+        order.status = '已完成';
+
+        // 3. 提示用户
+        alert("交易已完成！积分已结算。");
+
+        // 4. 重新渲染列表（传入当前的分类，刷新界面）
+        renderOrders(order.category);
+      }
+    }
+
+    function updateProfileUI() {
+      if(!currentUser) return;
+      document.getElementById('profile-name').innerText = currentUser.name;
+      document.getElementById('profile-college').innerText = currentUser.college;
+      document.querySelectorAll('.user-balance-display').forEach(el => {
+        el.innerText = currentUser.balance;
+      });
+      document.getElementById('home-balance').innerText = currentUser.balance;
+    }
+
+    function initProfileEdit() {
+      document.getElementById('edit-name').value = currentUser.name;
+      document.getElementById('edit-college').value = currentUser.college;
+    }
+
+    function saveProfile() {
+      currentUser.name = document.getElementById('edit-name').value;
+      currentUser.college = document.getElementById('edit-college').value;
+      alert("保存成功");
+      router.back();
+    }
+
+    function renderPoints() {
+      const list = document.getElementById('points-list');
+      list.innerHTML = '';
+      data.points.forEach(p => {
+        const color = p.amount > 0 ? 'text-green-600' : 'text-red-500';
+        const sign = p.amount > 0 ? '+' : '';
+        list.innerHTML += `
+          <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+            <div>
+              <div class="text-sm font-bold text-gray-800">${p.title}</div>
+              <div class="text-xs text-gray-400 mt-0.5">${p.time}</div>
+            </div>
+            <div class="text-lg font-bold ${color}">${sign}${p.amount}</div>
+          </div>
+        `;
+      });
+    }
+
+    function renderChatList() {
+      const container = document.getElementById('chat-list-container');
+      container.innerHTML = '';
+      data.chats.forEach(chat => {
+        const bgClass = chat.unread > 0 ? 'bg-blue-50' : 'bg-white';
+        const badge = chat.unread > 0 ? `<span class="min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full px-1">${chat.unread}</span>` : '';
+        container.innerHTML += `
+          <div onclick="enterChat(${chat.sessionId}, '${chat.name}')" class="flex items-center gap-3 p-4 border-b border-gray-50 cursor-pointer ${bgClass} hover:bg-gray-50 transition-colors">
+            <div class="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500 text-lg flex-shrink-0">${chat.avatar}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-baseline mb-1">
+                <h3 class="font-bold text-gray-900 truncate">${chat.name}</h3>
+                <span class="text-xs text-gray-400">${chat.time}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <p class="text-sm text-gray-500 truncate pr-2">${chat.lastMsg}</p>
+                ${badge}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function enterChat(sessionId, name) {
+      currentSessionId = sessionId;
+      document.getElementById('chat-target-name').innerText = name;
+      const chatIdx = data.chats.findIndex(c => c.sessionId === sessionId);
+      if(chatIdx > -1) data.chats[chatIdx].unread = 0;
+      renderMessages(sessionId);
+      router.push('chat-room');
+    }
+
+    function renderMessages(sessionId) {
+      const container = document.getElementById('chat-messages');
+      container.innerHTML = '';
+      const msgs = data.messages[sessionId] || [];
+      msgs.forEach(msg => {
+        const isMe = msg.sender === 'me';
+        const alignClass = isMe ? 'justify-end' : 'justify-start';
+        const bubbleClass = isMe ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none';
+        container.innerHTML += `
+          <div class="flex ${alignClass}">
+             <div class="max-w-[75%]">
+               <div class="px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${bubbleClass}">
+                 ${msg.text}
+               </div>
+               <div class="text-[10px] text-gray-400 mt-1 ${isMe ? 'text-right' : 'text-left'}">${msg.time}</div>
+             </div>
+          </div>
+        `;
+      });
+    }
+
+    function handleSend() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if(!text) return;
+      if(!data.messages[currentSessionId]) data.messages[currentSessionId] = [];
+      data.messages[currentSessionId].push({ id: Date.now(), sender: 'me', text: text, time: '刚刚' });
+      const chat = data.chats.find(c => c.sessionId === currentSessionId);
+      if(chat) { chat.lastMsg = text; chat.time = '刚刚'; data.chats.sort((a, b) => (a.sessionId === currentSessionId ? -1 : 1)); }
+      input.value = '';
+      renderMessages(currentSessionId);
+      scrollToBottom();
+    }
+
+    function startChat(targetName) {
+      let chat = data.chats.find(c => c.name === targetName);
+      if (!chat) {
+        const newId = Date.now();
+        chat = { sessionId: newId, userId: 'new_user', name: targetName, avatar: targetName[0], lastMsg: '我们已经建立连接，可以开始聊天了', time: '刚刚', unread: 0 };
+        data.chats.unshift(chat);
+        data.messages[newId] = [];
+      }
+      enterChat(chat.sessionId, chat.name);
+    }
+
+    function scrollToBottom() {
+      const main = document.getElementById('chat-messages');
+      setTimeout(() => main.scrollTop = main.scrollHeight, 50);
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', () => {
+      router.push('login');
+      setPublishMode('need');
+    });
+
+  </script>
+</body>
+</html>
