@@ -64,5 +64,52 @@ class Application(db.Model):
     applicant = db.relationship('User', backref=db.backref('my_applications', lazy=True))
 
 
+# --- 4. 订单模型 ---
+class Order(db.Model):
+    __tablename__ = 'orders'
+    id = db.Column(db.Integer, primary_key=True)
+    buyer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey('posts.id'), nullable=False)
+    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(20), default='pending')
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    buyer = db.relationship('User', foreign_keys=[buyer_id], backref='buyer_orders')
+    seller = db.relationship('User', foreign_keys=[seller_id], backref='seller_orders')
+    post = db.relationship('Post', backref='orders')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'buyer_id': self.buyer_id,
+            'seller_id': self.seller_id,
+            'post_title': self.post.title,
+            'price': self.post.price,
+            'status': self.status,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+# --- 5. 记录积分历史模型  ---
+class PointsHistory(db.Model):
+    __tablename__ = 'points_history'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    points_change = db.Column(db.Integer, nullable=False)  # 积分变化的数量
+    action = db.Column(db.String(100), nullable=False)  # 积分变化的动作（如：购买服务、发布悬赏等）
+    description = db.Column(db.String(255))  # 可选的描述字段，记录变动的具体原因
+    created_at = db.Column(db.DateTime, default=datetime.now)  # 记录时间
+
+    user = db.relationship('User', backref=db.backref('points_history', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'points_change': self.points_change,
+            'action': self.action,
+            'description': self.description,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
 
 
