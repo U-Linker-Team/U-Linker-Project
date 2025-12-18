@@ -201,3 +201,31 @@ def get_points_history():
         'items': [h.to_dict() for h in pagination.items]  # 积分历史记录
     })
 
+@transaction_bp.route('/create_order', methods=['POST'])
+def create_order():
+    data = request.get_json()
+    buyer_id = data.get('buyer_id')
+    seller_id = data.get('seller_id')
+    post_id = data.get('post_id')
+    status = data.get('status', 'pending')  # 默认状态是 'pending'
+
+    # 检查参数是否有效
+    if not buyer_id or not seller_id or not post_id:
+        return error(message="参数缺失")
+
+    # 创建订单
+    new_order = Order(
+        buyer_id=buyer_id,
+        seller_id=seller_id,
+        post_id=post_id,
+        status=status  # 状态默认是 'pending'
+    )
+
+    try:
+        db.session.add(new_order)
+        db.session.commit()
+        return success(message="订单创建成功", data=new_order.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return error(message=str(e))
+
