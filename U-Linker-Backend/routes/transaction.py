@@ -175,3 +175,29 @@ def get_my_involved():
         'items': [o.to_dict() for o in pagination.items]
 
     })
+
+#查询积分的变动情况 变动历史 变动时间
+@transaction_bp.route('/points/history', methods=['GET'])
+def get_points_history():
+    # 获取用户ID
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return error(message="请提供 user_id")
+
+    # 获取分页参数
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('page_size', 10, type=int)
+
+    # 查询该用户的积分历史
+    query = PointsHistory.query.filter_by(user_id=user_id).order_by(PointsHistory.created_at.desc())
+
+    # 分页返回
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return success(data={
+        'total': pagination.total,  # 总记录数
+        'pages': pagination.pages,  # 总页数
+        'current_page': page,       # 当前页
+        'items': [h.to_dict() for h in pagination.items]  # 积分历史记录
+    })
+
