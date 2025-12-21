@@ -2,7 +2,7 @@ import os
 from flask import Blueprint, request, session
 from utils.response import success, error
 from extensions import db
-from models import User
+from models import User,PointsHistory
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from flask import current_app, url_for
@@ -23,7 +23,12 @@ def login():
     password = data.get('password')
 
     # 查找用户
-    user = User.query.filter_by(username=username).first()
+    user = User.query.filter(
+        or_(
+            User.username == username, 
+            User.student_id == username
+        )
+    ).first()
 
     # 检查锁定状态
     if user and user.lockout_until:
@@ -44,8 +49,12 @@ def login():
         user.lockout_until = None
         db.session.commit()
 
+        #将用户ID存入服务器端的Session
+        session.permanent = True  # 设置为持久化，防止关闭浏览器就退出
+        session['user_id'] = user.id 
+        
         result_data = {
-            "token": "fake-jwt-token-form-flask-1117",
+            "token": "session-active",
             "user": user.to_dict()
         }
         return success(data=result_data, message="登录成功")
@@ -118,6 +127,17 @@ def register():
             avatar=avatar
         )
         db.session.add(new_user)
+
+        db.session.flush() 
+        # --- 新增积分历史记录 ---
+        history = PointsHistory(
+            user_id=new_user.id,
+            points_change=points,
+            action="新用户注册",
+            description="欢迎来到 U-Linker,新用户注册奖励 100 积分"
+        )
+        db.session.add(history)
+        
         db.session.commit()
 
         return success(message="注册成功, 赠送100积分")
