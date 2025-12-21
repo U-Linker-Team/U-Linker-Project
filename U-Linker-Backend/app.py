@@ -13,10 +13,13 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = 'u-linker-secret'
 
-    CORS(app, resources={r"/*": {"origins": "*"}})
-
     db.init_app(app)
 
+    # 如果不知道前端端口，可以用列表写多个，或者用正则
+    CORS(app, 
+         resources={r"/*": {"origins": ["http://localhost:8080", "http://localhost:5173", "http://127.0.0.1:8000","http://127.0.0.1:5173"]}},
+         supports_credentials=True)
+    
     # 注册路由
     app.register_blueprint(auth_bp)
     app.register_blueprint(market_bp)
