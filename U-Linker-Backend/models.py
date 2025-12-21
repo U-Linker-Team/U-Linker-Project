@@ -14,6 +14,7 @@ class User(db.Model):
     avatar = db.Column(db.String(200))
     failed_login_attempts = db.Column(db.Integer, default=0)
     lockout_until = db.Column(db.DateTime)
+    is_admin = db.Column(db.Boolean, default=False) 
 
     def to_dict(self):
         return {
@@ -21,7 +22,9 @@ class User(db.Model):
             'username': self.username,
             'name': self.name,
             'points': self.points,
-            'avatar': self.avatar
+            'avatar': self.avatar,
+            'college': self.college,
+            'is_admin': self.is_admin
         }
 
 # --- 2. 帖子模型 ---
@@ -58,11 +61,31 @@ class Application(db.Model):
     post_id = db.Column(db.Integer, db.ForeignKey('posts.id'), nullable=False)
     applicant_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     status = db.Column(db.String(20), default='pending')
+    message = db.Column(db.String(200),default='')
     created_at = db.Column(db.DateTime, default=datetime.now)
-
-    post = db.relationship('Post', backref=db.backref('applications', lazy=True))
+    post = db.relationship('Post', backref=db.backref('applications', lazy=True, cascade="all,delete-orphan"))
     applicant = db.relationship('User', backref=db.backref('my_applications', lazy=True))
+    # 联合唯一索引
+    __table_args__ = (
+        db.UniqueConstraint('post_id', 'applicant_id', name='unique_user_application'),
+    )
 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'post_id': self.post_id,
+            'applicant_id': self.applicant_id,
+            'status': self.status,
+            'message': self.message,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            # 方便前端直接拿到申请人的头像和名字
+            'applicant_info': {
+                'id': self.applicant.id,
+                'name': self.applicant.name or self.applicant.username,
+                'avatar': self.applicant.avatar,
+                'college': self.applicant.college
+            } if self.applicant else None
+        }
 
 # --- 4. 订单模型 ---
 class Order(db.Model):
@@ -86,10 +109,71 @@ class Order(db.Model):
             'post_title': self.post.title,
             'price': self.post.price,
             'status': self.status,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            # 1. 必须返回关联的帖子信息
+            'post': {
+                'id': self.post.id,
+                'title': self.post.title,
+                'price': self.post.price,
+                'post_type': self.post.post_type, # service 或 bounty
+            } if self.post else None,
+
+            # 2. 必须返回买家信息 (用于显示雇主/消费者)
+            'buyer_info': {
+                'id': self.buyer.id,
+                'name': self.buyer.name or self.buyer.username,
+                'avatar': self.buyer.avatar,
+                'college': self.buyer.college
+            } if self.buyer else None,
+
+            # 3. 必须返回卖家信息 (用于显示帮手/服务者)
+            'seller_info': {
+                'id': self.seller.id,
+                'name': self.seller.name or self.seller.username,
+                'avatar': self.seller.avatar,
+                'college': self.seller.college
+            } if self.seller else None
+        }
+
+
+# --- 5. 聊天会话模型 ---
+class ChatSession(db.Model):
+    __tablename__ = 'chat_sessions'
+    id = db.Column(db.Integer, primary_key=True)
+    # 为了简化，规定 user1_id 总是小于 user2_id，防止重复创建
+    user1_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user2_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now) # 只要有新消息就更新这个时间
+
+    user1 = db.relationship('User', foreign_keys=[user1_id])
+    user2 = db.relationship('User', foreign_keys=[user2_id])
+
+# --- 6. 消息模型 ---
+class Message(db.Model):
+    __tablename__ = 'messages'
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_sessions.id'), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    content = db.Column(db.String(500), nullable=False) # 文档限制500字符
+    is_read = db.Column(db.Boolean, default=False)      # 未读/已读
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    sender = db.relationship('User', foreign_keys=[sender_id])
+    session = db.relationship('ChatSession', backref=db.backref('messages', lazy=True,cascade='all,delete-orphan'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'session_id':self.session_id,
+            'sender_id': self.sender_id,
+            'sender_name': self.sender.username if self.sender else "未知用户",
+            'sender_avatar': self.sender.avatar if self.sender else "",
+            'content': self.content,
+            'is_read': self.is_read,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
         }
 
-# --- 5. 记录积分历史模型  ---
+# --- 7. 记录积分历史模型  ---
 class PointsHistory(db.Model):
     __tablename__ = 'points_history'
     id = db.Column(db.Integer, primary_key=True)
