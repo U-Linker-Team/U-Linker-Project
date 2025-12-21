@@ -4,6 +4,7 @@ from models import Post, User
 from utils.response import success, error
 from sqlalchemy import or_  # <--- 新增导入：用于复杂的查询逻辑
 
+# 创建名为'market'的蓝图，所有路由将以'/market'为前缀
 market_bp = Blueprint('market', __name__, url_prefix='/market')
 
 
@@ -17,9 +18,11 @@ def add_post():
     price = data.get('price', 0)
     post_type = data.get('post_type', 'service')
 
+    # 参数校验：检查必填字段是否为空
     if not all([author_id, title]):
         return error(message="缺少必要参数")
 
+    # 检查用户是否存在
     user = db.session.get(User, author_id)
     if not user:
         return error(message="用户不存在")
@@ -114,4 +117,5 @@ def get_my_published():
         'pages': pagination.pages,
         'current_page': page,
         'items': [p.to_dict() for p in pagination.items]
+
     })
