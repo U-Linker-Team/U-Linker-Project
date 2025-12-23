@@ -51,7 +51,11 @@ def login():
 
         #将用户ID存入服务器端的Session
         session.permanent = True  # 设置为持久化，防止关闭浏览器就退出
-        session['user_id'] = user.id 
+        session['user_id'] = user.id
+        
+        # 调试：打印 session 信息
+        print(f"[DEBUG /auth/login] Session 已设置 user_id: {user.id}")
+        print(f"[DEBUG /auth/login] Session keys: {list(session.keys())}") 
         
         result_data = {
             "token": "session-active",
@@ -218,9 +222,8 @@ def update_profile():
                 file_path = os.path.join(save_dir, filename)
                 file.save(file_path)
                 
-                # 4. 更新数据库里的路径 (存的是 URL 路径)
-                # 这样前端可以直接访问 http://localhost:5000/static/avatars/xxx.jpg
-                user.avatar = url_for('static', filename=f'avatars/{filename}')
+                # 4. 更新数据库里的路径 (使用绝对 URL，避免前端不同端口访问相对路径 404)
+                user.avatar = url_for('static', filename=f'avatars/{filename}', _external=True)
 
         db.session.commit()
         return success(message="个人资料修改成功", data=user.to_dict())
