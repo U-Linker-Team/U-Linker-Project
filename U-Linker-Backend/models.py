@@ -17,12 +17,22 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False) 
 
     def to_dict(self):
+        # 如果头像是相对路径，拼接当前域名，确保前端能正确访问
+        avatar_url = self.avatar
+        try:
+            from flask import request
+            if avatar_url and avatar_url.startswith('/'):
+                avatar_url = request.host_url.rstrip('/') + avatar_url
+        except Exception:
+            # 非请求上下文下（如脚本运行）保持原样
+            pass
+
         return {
             'id': self.id,
             'username': self.username,
             'name': self.name,
             'points': self.points,
-            'avatar': self.avatar,
+            'avatar': avatar_url,
             'college': self.college,
             'is_admin': self.is_admin
         }
@@ -135,8 +145,7 @@ class Order(db.Model):
             } if self.seller else None
         }
 
-
-# --- 5. 聊天会话模型 ---
+# --- 5. 聊天会话模型 (新增) ---
 class ChatSession(db.Model):
     __tablename__ = 'chat_sessions'
     id = db.Column(db.Integer, primary_key=True)
@@ -148,7 +157,7 @@ class ChatSession(db.Model):
     user1 = db.relationship('User', foreign_keys=[user1_id])
     user2 = db.relationship('User', foreign_keys=[user2_id])
 
-# --- 6. 消息模型 ---
+# --- 6. 消息模型 (新增) ---
 class Message(db.Model):
     __tablename__ = 'messages'
     id = db.Column(db.Integer, primary_key=True)
@@ -173,7 +182,7 @@ class Message(db.Model):
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
         }
 
-# --- 7. 记录积分历史模型  ---
+# --- 7. 记录积分历史模型 (新增) ---
 class PointsHistory(db.Model):
     __tablename__ = 'points_history'
     id = db.Column(db.Integer, primary_key=True)
@@ -194,6 +203,3 @@ class PointsHistory(db.Model):
             'description': self.description,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
         }
-
-
-
