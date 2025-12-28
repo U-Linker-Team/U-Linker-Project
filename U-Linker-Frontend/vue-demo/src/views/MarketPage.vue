@@ -22,9 +22,19 @@
             @keyup.enter="fetchTasks"
             type="text" 
             class="bg-transparent w-full text-sm focus:outline-none text-gray-800" 
-            placeholder="搜索任务或服务... (回车搜索)" 
+            placeholder="搜索任务或服务... (支持多关键词，空格分隔)" 
           />
         </div>
+        <!-- 高级筛选按钮 -->
+        <button 
+          @click="showFilterModal = true"
+          class="px-3 py-2 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200 transition-colors"
+          title="高级筛选"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M7 12h10M11 18h2"/>
+          </svg>
+        </button>
       </div>
       
       <!-- Tab切换 (悬赏 vs 服务) -->
@@ -61,10 +71,8 @@
     <!-- 列表主内容 -->
     <main class="flex-1 overflow-y-auto hide-scrollbar bg-gray-50 px-4 py-4 space-y-3 pb-20">
       
-      <!-- 加载中状态 -->
-      <div v-if="loading" class="text-center py-10 text-gray-400 text-sm">
-        加载数据中...
-      </div>
+      <!-- 加载中骨架屏 -->
+      <Skeleton v-if="loading" variant="list" :count="5" />
 
       <!-- 空状态 -->
       <div v-else-if="tasks.length === 0" class="text-center py-10 text-gray-400 text-sm flex flex-col items-center">
@@ -154,6 +162,17 @@
       :taskId="currentTaskId"
       @close="showDetail = false"
     />
+
+    <!-- 高级筛选弹窗 -->
+    <FilterModal 
+      v-if="showFilterModal"
+      :pointsMin="filterMinPrice"
+      :pointsMax="filterMaxPrice"
+      :filterCollege="filterCollege"
+      @close="showFilterModal = false"
+      @apply="handleFilterApply"
+      @reset="handleFilterReset"
+    />
   </div>
 </template>
 
@@ -163,6 +182,8 @@ import { useRouter } from 'vue-router'
 import { getPostList } from '@/api/market'
 import BottomNav from '@/components/common/BottomNav.vue'
 import TaskDetailModal from '@/components/market/TaskDetailModal.vue'
+import FilterModal from '@/components/market/FilterModal.vue'
+import Skeleton from '@/components/common/Skeleton.vue'
 
 const router = useRouter()
 
@@ -176,18 +197,44 @@ const currentSort = ref('time')   // 默认为时间 (time)
 const showDetail = ref(false)
 const currentTaskId = ref(null)
 
+// 高级筛选状态
+const showFilterModal = ref(false)
+const filterMinPrice = ref(null)
+const filterMaxPrice = ref(null)
+const filterCollege = ref('')
+
 // ================= API 请求 =================
 const fetchTasks = async () => {
   loading.value = true
   tasks.value = [] // 清空旧数据防止闪烁
   try {
-    const res = await getPostList({
+    // 构建请求参数，支持新的高级搜索功能
+    const params = {
       type: currentType.value,
-      keyword: searchKeyword.value,
       sort: currentSort.value,
       page: 1, // 暂时不处理分页，先拉第一页
       page_size: 50
-    })
+    }
+    
+    // 关键词搜索（支持多关键词，空格分隔）
+    if (searchKeyword.value && searchKeyword.value.trim()) {
+      params.keyword = searchKeyword.value.trim()
+    }
+    
+    // 价格范围筛选
+    if (filterMinPrice.value !== null && filterMinPrice.value !== undefined) {
+      params.min_price = filterMinPrice.value
+    }
+    if (filterMaxPrice.value !== null && filterMaxPrice.value !== undefined) {
+      params.max_price = filterMaxPrice.value
+    }
+    
+    // 学院筛选
+    if (filterCollege.value && filterCollege.value !== 'all') {
+      params.college = filterCollege.value
+    }
+    
+    const res = await getPostList(params)
     
     if (res.status === 'success') {
       tasks.value = res.data.items
@@ -236,6 +283,23 @@ const formatStatus = (status) => {
     'deleted': '已下架'
   }
   return map[status] || status
+}
+
+// 高级筛选处理
+const handleFilterApply = (filterData) => {
+  filterMinPrice.value = filterData.pointsMin
+  filterMaxPrice.value = filterData.pointsMax
+  filterCollege.value = filterData.college === 'all' ? '' : filterData.college
+  showFilterModal.value = false
+  fetchTasks() // 应用筛选后重新加载数据
+}
+
+const handleFilterReset = () => {
+  filterMinPrice.value = null
+  filterMaxPrice.value = null
+  filterCollege.value = ''
+  showFilterModal.value = false
+  fetchTasks() // 重置筛选后重新加载数据
 }
 
 // 页面加载时请求数据

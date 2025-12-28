@@ -40,8 +40,8 @@
         <!-- 列表展示区域 -->
         <div class="order-list">
           
-          <!-- 加载中 -->
-          <div v-if="loading" class="text-center py-10 text-gray-400 text-sm">加载中...</div>
+          <!-- 加载中骨架屏 -->
+          <Skeleton v-if="loading" variant="order" :count="3" />
           
           <!-- 空状态 -->
           <div v-else-if="currentList.length === 0" class="text-center py-10 text-gray-400 text-sm flex flex-col items-center">
@@ -148,6 +148,7 @@ import { useUserStore } from '@/stores/user'
 import { getMyInvolved, confirmComplete, cancelOrder } from '@/api/transaction'
 import { createSession } from '@/api/chat'
 import BottomNav from '@/components/common/BottomNav.vue'
+import Skeleton from '@/components/common/Skeleton.vue'
 
 const router = useRouter()
 const route = useRoute()
