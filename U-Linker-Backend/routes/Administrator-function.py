@@ -345,3 +345,943 @@ def get_all_posts():
         'total': pagination.total,
         'items': items
     })
+# ================= 5.4 统计接口：每日新增用户和发帖量 =================
+@admin_bp.route('/stats/daily', methods=['GET'])
+@admin_required
+def get_daily_stats():
+    """
+    获取每日新增用户和发帖量统计
+    支持参数:start_date, end_date, group_by
+    """
+    try:
+        # 获取查询参数
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        group_by = request.args.get('group_by', 'day')  # day, week, month
+        
+        # 设置默认时间范围（最近30天）
+        if not end_date_str:
+            # 默认结束日期为今天，设置为23:59:59确保包含今天的所有数据
+            end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+        else:
+            try:
+                # 解析日期并设置为当天的23:59:59，确保包含当天的所有数据
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59, microsecond=999999)
+            except ValueError:
+                return error(message="结束日期格式错误,请使用YYYY-MM-DD格式")
+        
+        if not start_date_str:
+            # 默认开始日期为30天前，设置为00:00:00确保包含当天的所有数据
+            start_date = (end_date - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            try:
+                # 解析日期并设置为当天的00:00:00，确保包含当天的所有数据
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').replace(hour=0, minute=0, second=0, microsecond=0)
+            except ValueError:
+                return error(message="开始日期格式错误,请使用YYYY-MM-DD格式")
+        
+        # 确保开始日期不晚于结束日期
+        if start_date > end_date:
+            return error(message="开始日期不能晚于结束日期")
+        
+        # 根据分组方式调整查询
+        date_format_map = {
+            'day': '%Y-%m-%d',
+            'week': '%Y-%U',  # 年份-周数
+            'month': '%Y-%m'
+        }
+        
+        date_format = date_format_map.get(group_by, '%Y-%m-%d')
+        
+        # 查询每日新增用户统计
+        if group_by == 'day':
+            # 按天统计
+            user_stats_query = db.session.query(
+                db.func.date(User.created_at).label('date'),
+                db.func.count(User.id).label('new_users')
+            ).filter(
+                User.created_at >= start_date,
+                User.created_at <= end_date
+            ).group_by(
+                db.func.date(User.created_at)
+            ).order_by(
+                db.func.date(User.created_at)
+            ).all()
+        else:
+            # 按周/月统计
+            user_stats_query = db.session.query(
+                db.func.strftime(date_format, User.created_at).label('period'),
+                db.func.count(User.id).label('new_users')
+            ).filter(
+                User.created_at >= start_date,
+                User.created_at <= end_date
+            ).group_by(
+                db.func.strftime(date_format, User.created_at)
+            ).order_by(
+                db.func.strftime(date_format, User.created_at)
+            ).all()
+        
+        # 查询每日新增帖子统计
+        if group_by == 'day':
+            post_stats_query = db.session.query(
+                db.func.date(Post.created_at).label('date'),
+                db.func.count(Post.id).label('new_posts'),
+                Post.post_type
+            ).filter(
+                Post.created_at >= start_date,
+                Post.created_at <= end_date
+            ).group_by(
+                db.func.date(Post.created_at),
+                Post.post_type
+            ).order_by(
+                db.func.date(Post.created_at)
+            ).all()
+        else:
+            post_stats_query = db.session.query(
+                db.func.strftime(date_format, Post.created_at).label('period'),
+                db.func.count(Post.id).label('new_posts'),
+                Post.post_type
+            ).filter(
+                Post.created_at >= start_date,
+                Post.created_at <= end_date
+            ).group_by(
+                db.func.strftime(date_format, Post.created_at),
+                Post.post_type
+            ).order_by(
+                db.func.strftime(date_format, Post.created_at)
+            ).all()
+        
+        # 查询活跃用户数（最近7天有登录或注册的用户）
+        # 注意：这里的"活跃用户"是指最近7天有操作的用户，与get_stats()中的"active"（可用用户）不同
+        # - get_stats()中的"active"：没有被封禁或封禁已过期的用户（可用用户）
+        # - 这里的"active_users"：最近7天有登录或注册的用户（活跃用户）
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        active_users_last_7_days = User.query.filter(
+            or_(
+                User.last_login >= seven_days_ago,
+                User.created_at >= seven_days_ago
+            )
+        ).count()
+        
+        # 组织数据
+        stats_data = []
+        
+        if group_by == 'day':
+            # 按天组织数据
+            date_range = []
+            current_date = start_date.date()
+            end_date_date = end_date.date()
+            
+            while current_date <= end_date_date:
+                date_range.append(current_date.strftime('%Y-%m-%d'))
+                current_date += timedelta(days=1)
+            
+            # 构建按天统计的数据结构
+            date_stats_map = {}
+            for date_str in date_range:
+                date_stats_map[date_str] = {
+                    'date': date_str,
+                    'new_users': 0,
+                    'new_posts_total': 0,
+                    'new_bounties': 0,  # 悬赏任务
+                    'new_services': 0,  # 服务任务
+                }
+            
+            # 填充用户数据
+            for stat in user_stats_query:
+                # 处理日期格式：可能是datetime、date对象或字符串
+                if isinstance(stat.date, datetime):
+                    date_str = stat.date.strftime('%Y-%m-%d')
+                elif hasattr(stat.date, 'strftime'):
+                    # date对象
+                    date_str = stat.date.strftime('%Y-%m-%d')
+                else:
+                    # 字符串或其他格式
+                    date_str = str(stat.date)
+                    # 如果是datetime字符串，尝试解析
+                    try:
+                        if ' ' in date_str or 'T' in date_str:
+                            date_str = datetime.strptime(date_str.split()[0], '%Y-%m-%d').strftime('%Y-%m-%d')
+                    except:
+                        pass
+                
+                if date_str in date_stats_map:
+                    date_stats_map[date_str]['new_users'] = stat.new_users
+            
+            # 填充帖子数据
+            for stat in post_stats_query:
+                # 处理日期格式：可能是datetime、date对象或字符串
+                if isinstance(stat.date, datetime):
+                    date_str = stat.date.strftime('%Y-%m-%d')
+                elif hasattr(stat.date, 'strftime'):
+                    # date对象
+                    date_str = stat.date.strftime('%Y-%m-%d')
+                else:
+                    # 字符串或其他格式
+                    date_str = str(stat.date)
+                    # 如果是datetime字符串，尝试解析
+                    try:
+                        if ' ' in date_str or 'T' in date_str:
+                            date_str = datetime.strptime(date_str.split()[0], '%Y-%m-%d').strftime('%Y-%m-%d')
+                    except:
+                        pass
+                
+                if date_str in date_stats_map:
+                    date_stats_map[date_str]['new_posts_total'] += stat.new_posts
+                    if stat.post_type == 'bounty':
+                        date_stats_map[date_str]['new_bounties'] += stat.new_posts  # 累加而不是覆盖
+                    elif stat.post_type == 'service':
+                        date_stats_map[date_str]['new_services'] += stat.new_posts  # 累加而不是覆盖
+            
+            # 转换为列表
+            for date_str in date_range:
+                if date_str in date_stats_map:
+                    stats_data.append(date_stats_map[date_str])
+        else:
+            # 按周/月组织数据
+            period_stats_map = {}
+            
+            # 填充用户数据
+            for stat in user_stats_query:
+                period = stat.period
+                period_stats_map[period] = {
+                    'period': period,
+                    'new_users': stat.new_users,
+                    'new_posts_total': 0,
+                    'new_bounties': 0,
+                    'new_services': 0
+                }
+            
+            # 填充帖子数据
+            for stat in post_stats_query:
+                period = stat.period
+                if period not in period_stats_map:
+                    period_stats_map[period] = {
+                        'period': period,
+                        'new_users': 0,
+                        'new_posts_total': 0,
+                        'new_bounties': 0,
+                        'new_services': 0
+                    }
+                
+                period_stats_map[period]['new_posts_total'] += stat.new_posts
+                if stat.post_type == 'bounty':
+                    period_stats_map[period]['new_bounties'] += stat.new_posts
+                elif stat.post_type == 'service':
+                    period_stats_map[period]['new_services'] += stat.new_posts
+            
+            # 转换为列表并按期间排序
+            stats_data = list(period_stats_map.values())
+            stats_data.sort(key=lambda x: x['period'])
+        
+        # 计算总数
+        total_new_users = sum(item['new_users'] for item in stats_data)
+        total_new_posts = sum(item['new_posts_total'] for item in stats_data)
+        total_new_bounties = sum(item.get('new_bounties', 0) for item in stats_data)
+        total_new_services = sum(item.get('new_services', 0) for item in stats_data)
+        
+        return success(data={
+            'time_range': {
+                'start_date': start_date.strftime('%Y-%m-%d'),
+                'end_date': end_date.strftime('%Y-%m-%d'),
+                'group_by': group_by
+            },
+            'summary': {
+                'total_new_users': total_new_users,
+                'total_new_posts': total_new_posts,
+                'total_new_bounties': total_new_bounties,
+                'total_new_services': total_new_services,
+                'active_users_last_7_days': active_users_last_7_days  # 最近7天有操作的用户
+            },
+            'daily_stats': stats_data
+        })
+        
+    except Exception as e:
+        return error(message=f"获取统计数据失败: {str(e)}")
+
+
+# ================= 5.5 导出统计数据为Excel =================
+@admin_bp.route('/stats/export', methods=['GET'])
+@admin_required
+def export_stats_excel():
+    """
+    导出统计数据为Excel文件
+    参数:start_date, end_date, group_by, data_types (可选:users,posts,all)
+    """
+    try:
+        # 获取查询参数
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        group_by = request.args.get('group_by', 'day')
+        data_types = request.args.get('data_types', 'all')  # users, posts, all
+        
+        # 设置默认时间范围 - 与get_daily_stats保持一致
+        if not end_date_str:
+            # 默认结束日期为今天，设置为23:59:59确保包含今天的所有数据
+            end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+        else:
+            try:
+                # 解析日期并设置为当天的23:59:59，确保包含当天的所有数据
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59, microsecond=999999)
+            except ValueError:
+                return error(message="结束日期格式错误,请使用YYYY-MM-DD格式")
+        
+        if not start_date_str:
+            # 默认开始日期为30天前，设置为00:00:00确保包含当天的所有数据
+            start_date = (end_date - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            try:
+                # 解析日期并设置为当天的00:00:00，确保包含当天的所有数据
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').replace(hour=0, minute=0, second=0, microsecond=0)
+            except ValueError:
+                return error(message="开始日期格式错误,请使用YYYY-MM-DD格式")
+        
+        # 检查日期范围
+        if start_date > end_date:
+            return error(message="开始日期不能晚于结束日期")
+        
+        # 获取统计数据 - 直接调用内部函数而不是视图函数
+        # 复制 get_daily_stats 的查询逻辑
+        date_format_map = {
+            'day': '%Y-%m-%d',
+            'week': '%Y-%U',
+            'month': '%Y-%m'
+        }
+        date_format = date_format_map.get(group_by, '%Y-%m-%d')
+        
+        # 查询用户统计
+        if group_by == 'day':
+            user_stats_query = db.session.query(
+                db.func.date(User.created_at).label('date'),
+                db.func.count(User.id).label('new_users')
+            ).filter(
+                User.created_at >= start_date,
+                User.created_at <= end_date
+            ).group_by(
+                db.func.date(User.created_at)
+            ).all()
+        else:
+            user_stats_query = db.session.query(
+                db.func.strftime(date_format, User.created_at).label('period'),
+                db.func.count(User.id).label('new_users')
+            ).filter(
+                User.created_at >= start_date,
+                User.created_at <= end_date
+            ).group_by(
+                db.func.strftime(date_format, User.created_at)
+            ).all()
+        
+        # 查询帖子统计
+        if group_by == 'day':
+            post_stats_query = db.session.query(
+                db.func.date(Post.created_at).label('date'),
+                db.func.count(Post.id).label('new_posts'),
+                Post.post_type
+            ).filter(
+                Post.created_at >= start_date,
+                Post.created_at <= end_date
+            ).group_by(
+                db.func.date(Post.created_at),
+                Post.post_type
+            ).all()
+        else:
+            post_stats_query = db.session.query(
+                db.func.strftime(date_format, Post.created_at).label('period'),
+                db.func.count(Post.id).label('new_posts'),
+                Post.post_type
+            ).filter(
+                Post.created_at >= start_date,
+                Post.created_at <= end_date
+            ).group_by(
+                db.func.strftime(date_format, Post.created_at),
+                Post.post_type
+            ).all()
+        
+        # 计算统计数据
+        stats_data = []
+        if group_by == 'day':
+            # 按天组织数据
+            date_range = []
+            current_date = start_date.date()
+            end_date_date = end_date.date()
+            
+            while current_date <= end_date_date:
+                date_range.append(current_date.strftime('%Y-%m-%d'))
+                current_date += timedelta(days=1)
+            
+            date_stats_map = {}
+            for date_str in date_range:
+                date_stats_map[date_str] = {
+                    'date': date_str,
+                    'new_users': 0,
+                    'new_posts_total': 0,
+                    'new_bounties': 0,
+                    'new_services': 0,
+                }
+            
+            # 填充用户数据
+            for stat in user_stats_query:
+                # 处理日期格式：可能是datetime、date对象或字符串
+                if isinstance(stat.date, datetime):
+                    date_str = stat.date.strftime('%Y-%m-%d')
+                elif hasattr(stat.date, 'strftime'):
+                    # date对象
+                    date_str = stat.date.strftime('%Y-%m-%d')
+                else:
+                    # 字符串或其他格式
+                    date_str = str(stat.date)
+                    # 如果是datetime字符串，尝试解析
+                    try:
+                        if ' ' in date_str or 'T' in date_str:
+                            date_str = datetime.strptime(date_str.split()[0], '%Y-%m-%d').strftime('%Y-%m-%d')
+                    except:
+                        pass
+                
+                if date_str in date_stats_map:
+                    date_stats_map[date_str]['new_users'] = stat.new_users
+            
+            # 填充帖子数据
+            for stat in post_stats_query:
+                # 处理日期格式：可能是datetime、date对象或字符串
+                if isinstance(stat.date, datetime):
+                    date_str = stat.date.strftime('%Y-%m-%d')
+                elif hasattr(stat.date, 'strftime'):
+                    # date对象
+                    date_str = stat.date.strftime('%Y-%m-%d')
+                else:
+                    # 字符串或其他格式
+                    date_str = str(stat.date)
+                    # 如果是datetime字符串，尝试解析
+                    try:
+                        if ' ' in date_str or 'T' in date_str:
+                            date_str = datetime.strptime(date_str.split()[0], '%Y-%m-%d').strftime('%Y-%m-%d')
+                    except:
+                        pass
+                
+                if date_str in date_stats_map:
+                    date_stats_map[date_str]['new_posts_total'] += stat.new_posts
+                    if stat.post_type == 'bounty':
+                        date_stats_map[date_str]['new_bounties'] += stat.new_posts  # 累加而不是覆盖
+                    elif stat.post_type == 'service':
+                        date_stats_map[date_str]['new_services'] += stat.new_posts  # 累加而不是覆盖
+            
+            for date_str in date_range:
+                if date_str in date_stats_map:
+                    stats_data.append(date_stats_map[date_str])
+        else:
+            # 按周/月组织数据
+            period_stats_map = {}
+            
+            for stat in user_stats_query:
+                period = stat.period
+                period_stats_map[period] = {
+                    'period': period,
+                    'new_users': stat.new_users,
+                    'new_posts_total': 0,
+                    'new_bounties': 0,
+                    'new_services': 0
+                }
+            
+            for stat in post_stats_query:
+                period = stat.period
+                if period not in period_stats_map:
+                    period_stats_map[period] = {
+                        'period': period,
+                        'new_users': 0,
+                        'new_posts_total': 0,
+                        'new_bounties': 0,
+                        'new_services': 0
+                    }
+                
+                period_stats_map[period]['new_posts_total'] += stat.new_posts
+                if stat.post_type == 'bounty':
+                    period_stats_map[period]['new_bounties'] += stat.new_posts
+                elif stat.post_type == 'service':
+                    period_stats_map[period]['new_services'] += stat.new_posts
+            
+            stats_data = list(period_stats_map.values())
+            stats_data.sort(key=lambda x: x['period'])
+        
+        # 计算总数
+        total_new_users = sum(item['new_users'] for item in stats_data)
+        total_new_posts = sum(item['new_posts_total'] for item in stats_data)
+        total_new_bounties = sum(item.get('new_bounties', 0) for item in stats_data)
+        total_new_services = sum(item.get('new_services', 0) for item in stats_data)
+        
+        # 查询活跃用户数（最近7天有登录或注册的用户）
+        # 注意：这里的"活跃用户"是指最近7天有操作的用户，与get_stats()中的"active"（可用用户）不同
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        active_users_last_7_days = User.query.filter(
+            or_(
+                User.last_login >= seven_days_ago,
+                User.created_at >= seven_days_ago
+            )
+        ).count()
+        
+        # 创建Excel写入器
+        output = BytesIO()
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # 1. 统计摘要工作表
+            summary_data = {
+                '统计项目': [
+                    '统计时间范围',
+                    '开始日期',
+                    '结束日期',
+                    '分组方式',
+                    '新增用户总数',
+                    '新增帖子总数',
+                    '新增悬赏任务数',
+                    '新增服务任务数',
+                    '最近7天活跃用户数'
+                ],
+                '数值': [
+                    f"{start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}",
+                    start_date.strftime('%Y-%m-%d'),
+                    end_date.strftime('%Y-%m-%d'),
+                    '按天' if group_by == 'day' else '按周' if group_by == 'week' else '按月',
+                    total_new_users,
+                    total_new_posts,
+                    total_new_bounties,
+                    total_new_services,
+                    active_users_last_7_days
+                ]
+            }
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, sheet_name='统计摘要', index=False)
+            
+            # 2. 每日/每周/每月统计数据工作表
+            if stats_data:
+                if group_by == 'day':
+                    stats_list = []
+                    for item in stats_data:
+                        stats_list.append({
+                            '日期': item['date'],
+                            '新增用户数': item['new_users'],
+                            '新增帖子总数': item['new_posts_total'],
+                            '新增悬赏任务数': item.get('new_bounties', 0),
+                            '新增服务任务数': item.get('new_services', 0)
+                        })
+                else:
+                    stats_list = []
+                    for item in stats_data:
+                        stats_list.append({
+                            '期间': item['period'],
+                            '新增用户数': item['new_users'],
+                            '新增帖子总数': item['new_posts_total'],
+                            '新增悬赏任务数': item.get('new_bounties', 0),
+                            '新增服务任务数': item.get('new_services', 0)
+                        })
+                
+                if stats_list:
+                    stats_df = pd.DataFrame(stats_list)
+                    stats_df.to_excel(writer, sheet_name='详细统计数据', index=False)
+            
+            # 3. 用户增长趋势（用于图表）
+            if stats_data and group_by == 'day':
+                chart_data = []
+                for item in stats_data:
+                    chart_data.append({
+                        '日期': item['date'],
+                        '新增用户': item['new_users'],
+                        '新增悬赏': item.get('new_bounties', 0),
+                        '新增服务': item.get('new_services', 0)
+                    })
+                
+                if chart_data:
+                    chart_df = pd.DataFrame(chart_data)
+                    chart_df.to_excel(writer, sheet_name='图表数据', index=False)
+            
+            # 4. 用户详细信息（如果需要）
+            if data_types in ['users', 'all']:
+                users_data = []
+                users = User.query.filter(
+                    User.created_at >= start_date,
+                    User.created_at <= end_date
+                ).order_by(desc(User.created_at)).all()
+                
+                for user in users:
+                    # 统计用户发布的帖子
+                    user_posts = Post.query.filter_by(author_id=user.id).count()
+                    user_bounties = Post.query.filter_by(author_id=user.id, post_type='bounty').count()
+                    user_services = Post.query.filter_by(author_id=user.id, post_type='service').count()
+                    
+                    users_data.append({
+                        '用户ID': user.id,
+                        '用户名': user.username,
+                        '真实姓名': user.name or '',
+                        '学号': user.student_id or '',
+                        '学院': user.college or '',
+                        '注册时间': user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else '',
+                        '最后登录': user.last_login.strftime('%Y-%m-%d %H:%M:%S') if user.last_login else '',
+                        '积分余额': user.points,
+                        '用户等级': '管理员' if user.is_admin else '普通用户',
+                        '封禁状态': '是' if user.ban_until and user.ban_until >= datetime.now() else '否',
+                        '封禁到期': user.ban_until.strftime('%Y-%m-%d %H:%M:%S') if user.ban_until else '',
+                        '帖子总数': user_posts,
+                        '悬赏任务数': user_bounties,
+                        '服务任务数': user_services
+                    })
+                
+                if users_data:
+                    users_df = pd.DataFrame(users_data)
+                    users_df.to_excel(writer, sheet_name='新增用户详情', index=False)
+            
+            # 5. 帖子详细信息（如果需要）
+            if data_types in ['posts', 'all']:
+                posts_data = []
+                posts = Post.query.filter(
+                    Post.created_at >= start_date,
+                    Post.created_at <= end_date
+                ).order_by(desc(Post.created_at)).all()
+                
+                for post in posts:
+                    posts_data.append({
+                        '帖子ID': post.id,
+                        '标题': post.title,
+                        '类型': '悬赏' if post.post_type == 'bounty' else '服务',
+                        '价格': post.price,
+                        '状态': '招募中' if post.status == 'active' else '进行中' if post.status == 'trading' else '已完成' if post.status == 'sold' else '已下架',
+                        '创建时间': post.created_at.strftime('%Y-%m-%d %H:%M:%S') if post.created_at else '',
+                        '作者ID': post.author_id,
+                        '作者名': post.author.username if post.author else '',
+                        '作者学号': post.author.student_id if post.author and post.author.student_id else ''
+                    })
+                
+                if posts_data:
+                    posts_df = pd.DataFrame(posts_data)
+                    posts_df.to_excel(writer, sheet_name='新增帖子详情', index=False)
+        
+        # 移动指针到开头
+        output.seek(0)
+        
+        # 生成文件名
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"系统统计报表_{start_date.strftime('%Y%m%d')}_至_{end_date.strftime('%Y%m%d')}_{timestamp}.xlsx"
+        
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        return error(message=f"导出统计报表失败: {str(e)}")
+
+
+# ================= 5.6 获取统计数据图表数据 =================
+@admin_bp.route('/stats/charts', methods=['GET'])
+@admin_required
+def get_stats_charts():
+    """
+    为前端图表提供数据格式
+    支持不同类型的图表数据
+    """
+    try:
+        # 获取参数
+        chart_type = request.args.get('type', 'line')  # line, bar, pie
+        time_range = request.args.get('time_range', '7days')  # 7days, 30days, 90days
+        
+        # 计算时间范围 - 确保包含今天
+        # 将结束日期设置为今天的23:59:59，确保包含今天的所有数据
+        end_date = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+        if time_range == '7days':
+            # 7天前，从00:00:00开始
+            start_date = (end_date - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        elif time_range == '30days':
+            start_date = (end_date - timedelta(days=29)).replace(hour=0, minute=0, second=0, microsecond=0)
+        elif time_range == '90days':
+            start_date = (end_date - timedelta(days=89)).replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            start_date = (end_date - timedelta(days=29)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # 查询用户统计数据
+        user_stats = db.session.query(
+            db.func.date(User.created_at).label('date'),
+            db.func.count(User.id).label('new_users')
+        ).filter(
+            User.created_at >= start_date,
+            User.created_at <= end_date
+        ).group_by(
+            db.func.date(User.created_at)
+        ).order_by(
+            db.func.date(User.created_at)
+        ).all()
+        
+        # 查询帖子统计数据 - 按类型分组
+        post_stats = db.session.query(
+            db.func.date(Post.created_at).label('date'),
+            db.func.count(Post.id).label('new_posts'),
+            Post.post_type
+        ).filter(
+            Post.created_at >= start_date,
+            Post.created_at <= end_date
+        ).group_by(
+            db.func.date(Post.created_at),
+            Post.post_type
+        ).order_by(
+            db.func.date(Post.created_at)
+        ).all()
+        
+        # 组织数据
+        dates = []
+        user_counts = []
+        post_counts = []
+        bounty_counts = []  # 悬赏任务
+        service_counts = []  # 服务任务
+        
+        # 创建日期字典 - 使用date对象确保日期范围正确
+        date_stats = {}
+        current_date = start_date.date()
+        end_date_date = end_date.date()
+        
+        while current_date <= end_date_date:
+            date_str = current_date.strftime('%Y-%m-%d')
+            date_stats[date_str] = {
+                'users': 0,
+                'posts': 0,
+                'bounties': 0,
+                'services': 0
+            }
+            dates.append(date_str)
+            current_date += timedelta(days=1)
+        
+        # 填充用户数据
+        for stat in user_stats:
+            # 处理日期格式
+            if isinstance(stat.date, datetime):
+                date_str = stat.date.strftime('%Y-%m-%d')
+            elif hasattr(stat.date, 'strftime'):
+                date_str = stat.date.strftime('%Y-%m-%d')
+            else:
+                date_str = str(stat.date)
+            
+            if date_str in date_stats:
+                date_stats[date_str]['users'] = stat.new_users
+        
+        # 填充帖子数据 - 按类型分别统计
+        for stat in post_stats:
+            # 处理日期格式
+            if isinstance(stat.date, datetime):
+                date_str = stat.date.strftime('%Y-%m-%d')
+            elif hasattr(stat.date, 'strftime'):
+                date_str = stat.date.strftime('%Y-%m-%d')
+            else:
+                date_str = str(stat.date)
+            
+            if date_str in date_stats:
+                date_stats[date_str]['posts'] += stat.new_posts
+                if stat.post_type == 'bounty':
+                    date_stats[date_str]['bounties'] += stat.new_posts
+                elif stat.post_type == 'service':
+                    date_stats[date_str]['services'] += stat.new_posts
+        
+        # 转换为列表，确保顺序与dates一致
+        for date_str in dates:
+            user_counts.append(date_stats[date_str]['users'])
+            post_counts.append(date_stats[date_str]['posts'])
+            bounty_counts.append(date_stats[date_str]['bounties'])
+            service_counts.append(date_stats[date_str]['services'])
+        
+        # 根据不同图表类型组织数据
+        chart_data = {}
+        
+        if chart_type == 'line':
+            # 折线图数据 - 趋势分析，包含所有四种数据类型
+            chart_data = {
+                'type': 'line',
+                'title': f'系统数据趋势图 ({time_range})',
+                'xAxis': {
+                    'type': 'category',
+                    'data': dates
+                },
+                'yAxis': {
+                    'type': 'value',
+                    'name': '数量'
+                },
+                'series': [
+                    {
+                        'name': '新增用户',
+                        'type': 'line',
+                        'data': user_counts,
+                        'smooth': True
+                    },
+                    {
+                        'name': '新增帖子',
+                        'type': 'line',
+                        'data': post_counts,
+                        'smooth': True
+                    },
+                    {
+                        'name': '悬赏任务',
+                        'type': 'line',
+                        'data': bounty_counts,
+                        'smooth': True
+                    },
+                    {
+                        'name': '服务任务',
+                        'type': 'line',
+                        'data': service_counts,
+                        'smooth': True
+                    }
+                ]
+            }
+        
+        elif chart_type == 'bar':
+            # 柱状图数据 - 对比分析
+            # 只显示最近10天的数据
+            recent_dates = dates[-10:] if len(dates) > 10 else dates
+            recent_users = user_counts[-10:] if len(user_counts) > 10 else user_counts
+            recent_posts = post_counts[-10:] if len(post_counts) > 10 else post_counts
+            recent_bounties = bounty_counts[-10:] if len(bounty_counts) > 10 else bounty_counts
+            recent_services = service_counts[-10:] if len(service_counts) > 10 else service_counts
+            
+            chart_data = {
+                'type': 'bar',
+                'title': f'数据对比图 (最近{len(recent_dates)}天)',
+                'xAxis': {
+                    'type': 'category',
+                    'data': recent_dates
+                },
+                'yAxis': {
+                    'type': 'value',
+                    'name': '数量'
+                },
+                'series': [
+                    {
+                        'name': '新增用户',
+                        'type': 'bar',
+                        'data': recent_users,
+                        'barWidth': '40%'
+                    },
+                    {
+                        'name': '新增帖子',
+                        'type': 'bar',
+                        'data': recent_posts,
+                        'barWidth': '40%'
+                    },
+                    {
+                        'name': '悬赏任务',
+                        'type': 'bar',
+                        'data': recent_bounties,
+                        'barWidth': '40%'
+                    },
+                    {
+                        'name': '服务任务',
+                        'type': 'bar',
+                        'data': recent_services,
+                        'barWidth': '40%'
+                    }
+                ]
+            }
+        
+        elif chart_type == 'pie':
+            # 饼图数据 - 比例分析
+            # 帖子类型分布
+            bounty_count = Post.query.filter(
+                Post.created_at >= start_date,
+                Post.created_at <= end_date,
+                Post.post_type == 'bounty'
+            ).count()
+            
+            service_count = Post.query.filter(
+                Post.created_at >= start_date,
+                Post.created_at <= end_date,
+                Post.post_type == 'service'
+            ).count()
+            
+            post_types_data = [
+                {'value': bounty_count, 'name': '悬赏任务'},
+                {'value': service_count, 'name': '服务任务'}
+            ]
+            
+            # 用户活跃度分布
+            total_users = User.query.filter(
+                User.created_at >= start_date,
+                User.created_at <= end_date
+            ).count()
+            
+            # 查询在指定时间范围内的活跃用户（有登录或注册的用户）
+            # 注意：这里的"活跃用户"是指在时间范围内有操作的用户，用于饼图展示
+            # 活跃用户 = 在时间范围内注册的用户 OR 在时间范围内有登录的用户
+            active_users_in_range = User.query.filter(
+                or_(
+                    and_(User.created_at >= start_date, User.created_at <= end_date),  # 在时间范围内注册
+                    User.last_login >= start_date  # 在时间范围内有登录
+                )
+            ).count()
+            
+            inactive_users = total_users - active_users_in_range if total_users > active_users_in_range else 0
+            
+            user_activity_data = [
+                {'value': active_users_in_range, 'name': '活跃用户'},
+                {'value': inactive_users, 'name': '非活跃用户'}
+            ]
+            
+            chart_data = {
+                'type': 'pie',
+                'title': '数据分布图',
+                'series': [
+                    {
+                        'name': '帖子类型分布',
+                        'type': 'pie',
+                        'radius': ['40%', '70%'],
+                        'center': ['25%', '50%'],
+                        'data': post_types_data,
+                        'emphasis': {
+                            'itemStyle': {
+                                'shadowBlur': 10,
+                                'shadowOffsetX': 0,
+                                'shadowColor': 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    },
+                    {
+                        'name': '用户活跃度',
+                        'type': 'pie',
+                        'radius': ['40%', '70%'],
+                        'center': ['75%', '50%'],
+                        'data': user_activity_data,
+                        'emphasis': {
+                            'itemStyle': {
+                                'shadowBlur': 10,
+                                'shadowOffsetX': 0,
+                                'shadowColor': 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    }
+                ]
+            }
+        
+        # 计算统计摘要
+        total_new_users = sum(user_counts)
+        total_new_posts = sum(post_counts)
+        total_new_bounties = sum(bounty_counts)
+        total_new_services = sum(service_counts)
+        
+        # 查询活跃用户数（最近7天有操作的用户）
+        # 注意：这里的"活跃用户"是指最近7天有操作的用户，与get_stats()中的"active"（可用用户）不同
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        active_users_last_7_days = User.query.filter(
+            or_(
+                User.last_login >= seven_days_ago,
+                User.created_at >= seven_days_ago
+            )
+        ).count()
+        
+        return success(data={
+            'chart_type': chart_type,
+            'time_range': time_range,
+            'chart_data': chart_data,
+            'summary': {
+                'total_new_users': total_new_users,
+                'total_new_posts': total_new_posts,
+                'total_new_bounties': total_new_bounties,
+                'total_new_services': total_new_services,
+                'active_users_last_7_days': active_users_last_7_days
+            }
+        })
+        
+    except Exception as e:
+        return error(message=f"获取图表数据失败: {str(e)}")
