@@ -110,3 +110,192 @@ def get_all_users():
         'total': pagination.total,
         'items': [user.to_dict() for user in pagination.items]
     })
+
+# ================= 3. 管理用户积分 (支持争议撤销) =================
+@admin_bp.route('/users/<int:user_id>/points', methods=['POST'])
+@admin_required
+def manage_user_points(user_id):
+    """
+    管理员修改积分。
+    注意：根据 SRS 5.1.6.6，管理员仲裁时允许余额变为负数（债务）。 [cite: 335, 336]
+    """
+    data = request.get_json()
+    points_change = data.get('points_change') # 变化量
+    reason = data.get('reason', '管理员调整')
+    
+    if points_change is None:
+        return error(message="请提供积分变化量")
+    
+    user = db.session.get(User, user_id)
+    if not user:
+        return error(message="用户不存在")
+    
+    try:
+        # 记录旧值用于反馈
+        old_points = user.points
+        # 执行积分变动（此处不拦截负数，以支持债务记录）
+        user.points += int(points_change)
+        
+        # 必须记录在积分报表中
+        history = PointsHistory(
+            user_id=user_id,
+            points_change=points_change,
+            action='管理员仲裁',
+            description=reason
+        )
+        db.session.add(history)
+        db.session.commit()
+        
+        return success(message="积分操作成功", data={
+            'new_points': user.points,
+            'points_change': points_change
+        })
+    except Exception as e:
+        db.session.rollback()
+        return error(message=f"操作失败: {str(e)}")
+
+# ================= 4. 惩罚用户（封禁） =================
+@admin_bp.route('/users/<int:user_id>/ban', methods=['POST'])
+@admin_required
+def ban_user(user_id):
+    data = request.get_json()
+    reason = data.get('reason', '恶意行为')
+    ban_days = data.get('ban_days', 3)
+    
+    user = db.session.get(User, user_id)
+    if not user or user.is_admin:
+        return error(message="无法操作该用户")
+    
+    user.ban_count = (user.ban_count or 0) + 1
+    # 阶梯式封禁逻辑
+    ban_duration = ban_days * user.ban_count
+    user.ban_until = datetime.now() + timedelta(days=ban_duration)
+    
+    db.session.commit()
+    
+    # 返回封禁信息，供前端显示
+    return success(
+        message=f"已封禁 {ban_duration} 天",
+        data={
+            'ban_duration_days': ban_duration,
+            'ban_until': user.ban_until.strftime('%Y-%m-%d %H:%M:%S') if user.ban_until else None,
+            'ban_count': user.ban_count,
+            'reason': reason
+        }
+    )
+
+# ================= 4.1 解封用户 =================
+@admin_bp.route('/users/<int:user_id>/unban', methods=['POST'])
+@admin_required
+def unban_user(user_id):
+    """解封用户"""
+    user = db.session.get(User, user_id)
+    if not user:
+        return error(message="用户不存在")
+    
+    if not user.ban_until:
+        return error(message="该用户未被封禁")
+    
+    # 检查是否已经过期
+    if user.ban_until < datetime.now():
+        return error(message="该用户的封禁已过期，无需解封")
+    
+    # 解封：清除封禁时间（保留封禁次数，用于下次封禁时计算）
+    user.ban_until = None
+    
+    db.session.commit()
+    
+    return success(
+        message="用户已解封",
+        data={
+            'ban_until': None,
+            'ban_count': user.ban_count
+        }
+    )
+
+# ================= 5. 系统统计信息 =================
+@admin_bp.route('/stats', methods=['GET'])
+@admin_required
+def get_stats():
+    """
+    获取全站统计数据
+    注意：这里的"active"是指"可用用户"（没有被封禁或封禁已过期的用户）
+    与统计接口中的"active_users_last_7_days"（最近7天有操作的用户）是不同的概念
+    """
+    return success(data={
+        'users': {
+            'total': User.query.count(),
+            'active': User.query.filter(or_(User.ban_until.is_(None), User.ban_until < datetime.now())).count(),  # 可用用户：没有被封禁或封禁已过期
+            'banned': User.query.filter(User.ban_until.isnot(None)).filter(User.ban_until >= datetime.now()).count()
+        },
+        'posts': {
+            'total': Post.query.count()
+        },
+        'orders': {
+            'total': Order.query.count()
+        },
+        'points_circulating': db.session.query(db.func.sum(User.points)).scalar() or 0
+    })
+
+# ================= 5.1 获取所有订单列表 =================
+@admin_bp.route('/orders', methods=['GET'])
+@admin_required
+def get_all_orders():
+    """获取所有订单列表（管理员）"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('page_size', 20, type=int)
+    status = request.args.get('status', '')  # 可选的状态筛选
+    
+    # 构建查询
+    query = Order.query
+    
+    # 状态筛选
+    if status:
+        query = query.filter_by(status=status)
+    
+    query = query.order_by(desc(Order.created_at))
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    # 构建返回数据
+    items = []
+    for order in pagination.items:
+        order_dict = order.to_dict()
+        items.append(order_dict)
+    
+    return success(data={
+        'total': pagination.total,
+        'items': items
+    })
+
+# ================= 5.2 获取所有积分流动记录 =================
+@admin_bp.route('/points/history', methods=['GET'])
+@admin_required
+def get_all_points_history():
+    """获取所有积分流动记录（管理员）"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('page_size', 20, type=int)
+    
+    # 构建查询
+    query = PointsHistory.query.join(User, PointsHistory.user_id == User.id)
+    
+    query = query.order_by(desc(PointsHistory.created_at))
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    # 构建返回数据
+    items = []
+    for history in pagination.items:
+        history_dict = history.to_dict()
+        # 添加用户信息
+        if history.user:
+            history_dict['user_info'] = {
+                'id': history.user.id,
+                'name': history.user.name,
+                'username': history.user.username,
+                'college': history.user.college
+            }
+        items.append(history_dict)
+    
+    return success(data={
+        'total': pagination.total,
+        'items': items
+    })
