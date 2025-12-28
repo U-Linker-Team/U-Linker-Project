@@ -299,3 +299,49 @@ def get_all_points_history():
         'total': pagination.total,
         'items': items
     })
+
+# ================= 5.3 获取所有帖子列表 =================
+@admin_bp.route('/posts', methods=['GET'])
+@admin_required
+def get_all_posts():
+    """获取所有帖子列表（管理员）"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('page_size', 20, type=int)
+    keyword = request.args.get('keyword', '')
+    
+    # 构建查询
+    query = Post.query.join(User, Post.author_id == User.id)
+    
+    # 关键词搜索（标题、内容、作者名）
+    if keyword:
+        keyword_pattern = f'%{keyword}%'
+        query = query.filter(
+            or_(
+                Post.title.like(keyword_pattern),
+                Post.content.like(keyword_pattern),
+                User.name.like(keyword_pattern),
+                User.username.like(keyword_pattern)
+            )
+        )
+    
+    query = query.order_by(desc(Post.created_at))
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    # 构建返回数据
+    items = []
+    for post in pagination.items:
+        post_dict = post.to_dict()
+        # 添加作者信息
+        if post.author:
+            post_dict['author'] = {
+                'id': post.author.id,
+                'name': post.author.name,
+                'username': post.author.username,
+                'college': post.author.college
+            }
+        items.append(post_dict)
+    
+    return success(data={
+        'total': pagination.total,
+        'items': items
+    })
