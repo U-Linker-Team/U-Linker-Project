@@ -7,10 +7,8 @@
 
     <!-- 列表内容 -->
     <div class="p-0">
-      <!-- 加载中 -->
-      <div v-if="loading" class="p-4 text-center text-gray-400 text-sm">
-        加载会话中...
-      </div>
+      <!-- 加载中骨架屏 -->
+      <Skeleton v-if="loading" variant="list" :count="5" />
 
       <!-- 空状态 -->
       <div v-else-if="list.length === 0" class="flex flex-col items-center justify-center mt-20 text-gray-400">
@@ -62,6 +60,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getChatList } from '@/api/chat'
 import BottomNav from '@/components/common/BottomNav.vue'
+import Skeleton from '@/components/common/Skeleton.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
