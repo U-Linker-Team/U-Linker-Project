@@ -532,10 +532,7 @@
                 </button>
               </div>
               <div v-if="chartData" class="chart-container">
-                <div class="chart-placeholder">
-                  <p class="chart-hint">图表数据已加载，可使用 ECharts 等图表库渲染</p>
-                  <pre class="chart-data-preview">{{ JSON.stringify(chartData, null, 2) }}</pre>
-                </div>
+                <div ref="chartDom" class="chart-render"></div>
               </div>
             </div>
           </div>
@@ -556,13 +553,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, nextTick, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getStats, getAllUsers, getAllPosts, getAllOrders, getAllPointsHistory, exportPostsExcel, importPostsExcel, getUserByStudentId, getDailyStats, exportStatsExcel, getStatsCharts } from '@/api/admin'
 import { getImageUrl } from '@/utils/imageHelper'
 import BottomNav from '@/components/common/BottomNav.vue'
 import UserDetailModal from '@/components/admin/UserDetailModal.vue'
+import * as echarts from 'echarts'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -606,6 +604,7 @@ const statsGroupBy = ref('day')
 const showCharts = ref(false)
 const chartType = ref('line')
 const chartData = ref(null)
+const chartDom = ref(null)
 
 // 获取统计信息
 const refreshStats = async () => {
@@ -844,7 +843,12 @@ const handleFileImport = async (event) => {
   }
   
   // 确认导入
-  if (!confirm(`确定要导入文件 "${file.name}" 吗？\n\n注意：\n1. Excel 文件必须包含以下列：标题、内容、价格(积分)、类型、作者用户名\n2. 类型必须是"悬赏"或"服务"\n3. 悬赏任务会自动扣除作者积分`)) {
+  if (!confirm(`确定要导入文件 "${file.name}" 吗？
+
+注意：
+1. Excel 文件必须包含以下列：标题、内容、价格(积分)、类型、作者用户名
+2. 类型必须是"悬赏"或"服务"
+3. 悬赏任务会自动扣除作者积分`)) {
     event.target.value = '' // 清空文件选择
     return
   }
@@ -966,11 +970,113 @@ const loadChart = async (type) => {
     })
     if (res.status === 'success') {
       chartData.value = res.data.chart_data
+      
+      // 如果图表DOM元素存在，则渲染图表
+      if (chartDom.value) {
+        // 延迟渲染以确保DOM已更新
+        await nextTick()
+        renderChart()
+      }
     }
   } catch (e) {
     console.error('获取图表数据失败', e)
     alert('获取图表数据失败：' + (e.response?.data?.message || e.message))
   }
+}
+
+// 渲染图表
+let chartInstance = null
+const renderChart = () => {
+  if (!chartData.value || !chartDom.value) return
+  
+  // 销毁之前的图表实例（如果存在）
+  if (chartInstance) {
+    chartInstance.dispose()
+  }
+  
+  // 初始化图表实例
+  chartInstance = echarts.init(chartDom.value)
+  
+  // 获取图表配置
+  const option = getChartOption(chartType.value, chartData.value)
+  
+  // 设置图表配置并渲染
+  chartInstance.setOption(option)
+  
+  // 响应式处理
+  const handleResize = () => {
+    if (chartInstance) {
+      chartInstance.resize()
+    }
+  }
+  
+  window.addEventListener('resize', handleResize)
+  
+  // 组件卸载时清理图表实例
+  onUnmounted(() => {
+    if (chartInstance) {
+      chartInstance.dispose()
+      window.removeEventListener('resize', handleResize)
+    }
+  })
+}
+
+// 根据图表类型和数据生成图表配置
+const getChartOption = (type, data) => {
+  const baseOption = {
+    title: {
+      text: type === 'line' ? '数据趋势图' : type === 'bar' ? '数据柱状图' : '数据饼图'
+    },
+    tooltip: {},
+    legend: {
+      data: data.series?.map(s => s.name) || []
+    }
+  }
+  
+  if (type === 'line') {
+    return {
+      ...baseOption,
+      xAxis: {
+        type: 'category',
+        data: data.xAxis || []
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: data.series?.map(series => ({
+        ...series,
+        type: 'line',
+        smooth: true
+      })) || []
+    }
+  } else if (type === 'bar') {
+    return {
+      ...baseOption,
+      xAxis: {
+        type: 'category',
+        data: data.xAxis || []
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: data.series?.map(series => ({
+        ...series,
+        type: 'bar'
+      })) || []
+    }
+  } else if (type === 'pie') {
+    return {
+      ...baseOption,
+      series: data.series?.map(series => ({
+        ...series,
+        type: 'pie',
+        radius: '60%',
+        center: ['50%', '50%']
+      })) || []
+    }
+  }
+  
+  return baseOption
 }
 
 // 监听 activeTab 变化
@@ -2022,6 +2128,11 @@ onMounted(async () => {
   background: #f9fafb;
   border-radius: 0.5rem;
   border: 1px dashed #d1d5db;
+}
+
+.chart-render {
+  width: 100%;
+  height: 400px;
 }
 
 .chart-placeholder {
