@@ -1284,4 +1284,105 @@ def get_stats_charts():
         
     except Exception as e:
         return error(message=f"获取图表数据失败: {str(e)}")
+        # ================= 6. 导出帖子为 Excel =================
+@admin_bp.route('/posts/export', methods=['GET'])
+@admin_required
+def export_posts_excel():
+    """导出所有帖子为 Excel 文件"""
+    try:
+        # 获取所有帖子数据
+        posts_query = db.session.query(
+            Post.id,
+            Post.title,
+            Post.content,
+            Post.price,
+            Post.post_type,
+            Post.status,
+            Post.created_at,
+            User.username.label('author_username'),
+            User.name.label('author_name'),
+            User.college.label('author_college')
+        ).join(User, Post.author_id == User.id).order_by(desc(Post.created_at)).all()
+        
+        # 构建 DataFrame
+        posts_data = []
+        for post in posts_query:
+            posts_data.append({
+                'ID': post.id,
+                '标题': post.title,
+                '内容': post.content[:200] + '...' if len(post.content) > 200 else post.content,
+                '价格(积分)': post.price,
+                '类型': '悬赏' if post.post_type == 'bounty' else '服务',
+                '状态': '招募中' if post.status == 'active' else '进行中' if post.status == 'trading' else '已完成' if post.status == 'sold' else '已下架',
+                '发布时间': post.created_at.strftime('%Y-%m-%d %H:%M:%S') if post.created_at else '',
+                '作者用户名': post.author_username,
+                '作者姓名': post.author_name or '',
+                '作者学院': post.author_college or ''
+            })
+        
+        # 如果没有数据，创建一个空的 DataFrame
+        if not posts_data:
+            posts_data = [{
+                'ID': '',
+                '标题': '暂无数据',
+                '内容': '',
+                '价格(积分)': '',
+                '类型': '',
+                '状态': '',
+                '发布时间': '',
+                '作者用户名': '',
+                '作者姓名': '',
+                '作者学院': ''
+            }]
+        
+        df = pd.DataFrame(posts_data)
+        
+        # 创建 Excel 文件
+        output = BytesIO()
+        try:
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # 写入帖子数据
+                df.to_excel(writer, sheet_name='帖子数据', index=False)
+                
+                # 添加统计摘要
+                summary_data = {
+                    '统计项目': ['总帖子数', '悬赏任务数', '服务任务数', '招募中', '进行中', '已完成', '已下架'],
+                    '数量': [
+                        Post.query.count(),
+                        Post.query.filter_by(post_type='bounty').count(),
+                        Post.query.filter_by(post_type='service').count(),
+                        Post.query.filter_by(status='active').count(),
+                        Post.query.filter_by(status='trading').count(),
+                        Post.query.filter_by(status='sold').count(),
+                        Post.query.filter_by(status='deleted').count()
+                    ]
+                }
+                summary_df = pd.DataFrame(summary_data)
+                summary_df.to_excel(writer, sheet_name='统计摘要', index=False)
+            
+            # 重要：确保文件指针在开头
+            output.seek(0)
+            
+            # 验证文件大小
+            file_size = len(output.getvalue())
+            if file_size == 0:
+                raise Exception("生成的 Excel 文件大小为 0")
+            
+            # 生成文件名（使用标准格式，避免特殊字符）
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"帖子数据报表_{timestamp}.xlsx"
+            
+            # 返回文件
+            return send_file(
+                output,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        except Exception as e:
+            output.close()
+            raise e
+    except Exception as e:
+        return error(message=f"导出Excel失败: {str(e)}")
+
 
