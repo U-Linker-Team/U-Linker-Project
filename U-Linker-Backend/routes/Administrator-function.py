@@ -90,7 +90,6 @@ def get_all_users():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('page_size', 20, type=int)
     keyword = request.args.get('keyword', '')
-
     query = User.query
     if keyword:
         keyword_pattern = f'%{keyword}%'
@@ -1285,3 +1284,4 @@ def get_stats_charts():
         
     except Exception as e:
         return error(message=f"获取图表数据失败: {str(e)}")
+
