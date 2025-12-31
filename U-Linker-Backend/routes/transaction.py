@@ -18,10 +18,19 @@ def purchase_service():
     if not buyer_id:
         return error(message="请先登录")
 
+    # 检查是否是管理员（管理员不能购买服务）
+    buyer = db.session.get(User, buyer_id)
+    if buyer and buyer.is_admin:
+        return error(message="管理员不能购买服务")
+    
+    # 检查是否被封禁
+    if buyer and buyer.ban_until and buyer.ban_until > datetime.now():
+        ban_until_str = buyer.ban_until.strftime('%Y-%m-%d %H:%M:%S')
+        return error(message=f"您的账号已被封禁至 {ban_until_str}，无法购买服务")
+
     data = request.get_json()
     post_id = data.get('post_id')
 
-    buyer = db.session.get(User, buyer_id)
     post = db.session.get(Post, post_id)
 
     if not buyer or not post: return error(message="参数错误")
@@ -68,6 +77,16 @@ def apply_for_task():
     applicant_id = session.get('user_id')
     if not applicant_id:
         return error(message="请先登录")
+    
+    # 检查是否是管理员（管理员不能接受帖子）
+    applicant = db.session.get(User, applicant_id)
+    if applicant and applicant.is_admin:
+        return error(message="管理员不能接受帖子")
+    
+    # 检查是否被封禁
+    if applicant and applicant.ban_until and applicant.ban_until > datetime.now():
+        ban_until_str = applicant.ban_until.strftime('%Y-%m-%d %H:%M:%S')
+        return error(message=f"您的账号已被封禁至 {ban_until_str}，无法接受任务")
     
     data = request.get_json()
     
@@ -423,6 +442,4 @@ def get_points_history():
         # 告诉前端查的是谁的信息
         'target_user': target_user_info 
     })
-
-
 

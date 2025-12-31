@@ -44,18 +44,20 @@ def login():
 
     # 验证密码
     if user and check_password_hash(user.password_hash, password):
+        # 检查是否被封禁
+        if user.ban_until and user.ban_until > datetime.now():
+            ban_until_str = user.ban_until.strftime('%Y-%m-%d %H:%M:%S')
+            return error(message=f"您的账号已被封禁至 {ban_until_str}，无法登录")
+        
         # 密码正确
         user.failed_login_attempts = 0
         user.lockout_until = None
+        user.last_login = datetime.now()  # 更新最后登录时间
         db.session.commit()
 
         #将用户ID存入服务器端的Session
         session.permanent = True  # 设置为持久化，防止关闭浏览器就退出
         session['user_id'] = user.id
-        
-        # 调试：打印 session 信息
-        print(f"[DEBUG /auth/login] Session 已设置 user_id: {user.id}")
-        print(f"[DEBUG /auth/login] Session keys: {list(session.keys())}") 
         
         result_data = {
             "token": "session-active",
@@ -222,8 +224,9 @@ def update_profile():
                 file_path = os.path.join(save_dir, filename)
                 file.save(file_path)
                 
-                # 4. 更新数据库里的路径 (使用绝对 URL，避免前端不同端口访问相对路径 404)
-                user.avatar = url_for('static', filename=f'avatars/{filename}', _external=True)
+                # 4. 更新数据库里的路径 (存的是 URL 路径)
+                # 这样前端可以直接访问 http://localhost:5000/static/avatars/xxx.jpg
+                user.avatar = url_for('static', filename=f'avatars/{filename}')
 
         db.session.commit()
         return success(message="个人资料修改成功", data=user.to_dict())
