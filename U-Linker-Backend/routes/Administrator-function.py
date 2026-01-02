@@ -169,7 +169,6 @@ def ban_user(user_id):
     # 阶梯式封禁逻辑
     ban_duration = ban_days * user.ban_count
     user.ban_until = datetime.now() + timedelta(days=ban_duration)
-    
     db.session.commit()
     
     # 返回封禁信息，供前端显示
@@ -1384,5 +1383,6 @@ def export_posts_excel():
             raise e
     except Exception as e:
         return error(message=f"导出Excel失败: {str(e)}")
+
 
 
