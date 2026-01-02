@@ -508,7 +508,7 @@ def get_daily_stats():
             
             # 填充帖子数据
             for stat in post_stats_query:
-                # 处理日期格式：可能是datetime、date对象或字符串
+                # 处理日期格式
                 if isinstance(stat.date, datetime):
                     date_str = stat.date.strftime('%Y-%m-%d')
                 elif hasattr(stat.date, 'strftime'):
@@ -638,7 +638,7 @@ def export_stats_excel():
         if start_date > end_date:
             return error(message="开始日期不能晚于结束日期")
         
-        # 获取统计数据 - 直接调用内部函数而不是视图函数
+        # 获取统计数据 
         # 复制 get_daily_stats 的查询逻辑
         date_format_map = {
             'day': '%Y-%m-%d',
@@ -1383,6 +1383,7 @@ def export_posts_excel():
             raise e
     except Exception as e:
         return error(message=f"导出Excel失败: {str(e)}")
+
 
 
 
