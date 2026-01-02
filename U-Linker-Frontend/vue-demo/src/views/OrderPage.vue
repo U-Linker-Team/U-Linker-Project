@@ -319,7 +319,7 @@ const handleCancel = async (order) => {
 </script>
 
 <style scoped>
-/* 样式部分直接复用你之前的，稍微整理一下 */
+
 .home-container { min-height: 100vh; background-color: #f3f4f6; display: flex; justify-content: center; padding: 0; }
 .mobile-frame { width: 100%; max-width: 480px; background: white; min-height: 100vh; display: flex; flex-direction: column; position: relative; }
 .status-bar { height: 2rem; background: white; flex-shrink: 0; }
