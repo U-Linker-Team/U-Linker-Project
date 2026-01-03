@@ -309,6 +309,7 @@ onMounted(() => {
 
 <style scoped>
 /* 隐藏滚动条但保留功能 */
+  
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 </style>
