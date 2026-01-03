@@ -75,9 +75,8 @@ def analyze_user_preferences(user_id):
         'collaborative_score': {}
     }
     
-    # 1. 分析用户申请的帖子类型和价格
+    # 1. 分析用户申请的帖子类型（用于类型偏好，但不用于价格计算）
     applications = Application.query.filter_by(applicant_id=user_id).all()
-    prices = []  # 收集所有价格数据
     
     if applications:
         type_count = defaultdict(int)
@@ -86,13 +85,14 @@ def analyze_user_preferences(user_id):
             post = app.post
             if post:
                 type_count[post.post_type] += 1
-                prices.append(post.price)
         
         # 找出最偏好的类型
         if type_count:
             preferences['preferred_type'] = max(type_count.items(), key=lambda x: x[1])[0]
     
-    # 2. 分析用户完成的订单中的价格
+    # 2. 分析用户完成的订单中的价格（只使用实际完成的交易计算价格偏好）
+    # 这样更准确，因为只有完成的交易才真正反映用户的价格偏好
+    prices = []  # 只收集完成订单的价格数据
     orders = Order.query.filter(
         or_(Order.buyer_id == user_id, Order.seller_id == user_id)
     ).filter_by(status='completed').all()
@@ -102,9 +102,10 @@ def analyze_user_preferences(user_id):
             if order.post:
                 prices.append(order.post.price)
     
-    # 3. 基于用户实际数据计算价格偏好区间
+    # 3. 基于用户实际完成的订单计算价格偏好区间
+    # 只使用完成的订单，因为只有实际完成的交易才真正反映用户的价格偏好
     if prices:
-        # 计算平均值和标准差
+        # 计算平均值
         avg_price = sum(prices) / len(prices)
         # 使用平均值 ± 50% 作为偏好区间，但限制在合理范围内
         min_price = max(0, int(avg_price * 0.5))
@@ -112,7 +113,7 @@ def analyze_user_preferences(user_id):
         # 确保最大值不超过 1000，最小值不小于 0
         preferences['preferred_price_range'] = [min_price, min(max_price, 1000)]
     else:
-        # 如果没有历史数据，使用默认值 0-100
+        # 如果没有完成的订单数据，使用默认值 0-100
         preferences['preferred_price_range'] = [0, 100]
     
     # 4. 分析用户完成的订单中的学院偏好
@@ -338,3 +339,4 @@ def record_view():
         import traceback
         traceback.print_exc()
         return error(message=f"记录浏览失败：{str(e)}")
+
