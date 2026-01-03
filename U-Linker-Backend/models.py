@@ -203,3 +203,27 @@ class PointsHistory(db.Model):
             'description': self.description,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
         }
+
+# --- 8. 浏览记录模型 (用于个性化推荐) ---
+class ViewHistory(db.Model):
+    __tablename__ = 'view_history'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey('posts.id'), nullable=False)
+    viewed_at = db.Column(db.DateTime, default=datetime.now)
+    
+    user = db.relationship('User', backref=db.backref('view_history', lazy=True))
+    post = db.relationship('Post', backref=db.backref('view_history', lazy=True))
+    
+    # 防止重复记录（同一用户多次查看同一帖子只记录一次，更新查看时间）
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'post_id', name='unique_user_view'),
+    )
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'post_id': self.post_id,
+            'viewed_at': self.viewed_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
