@@ -449,7 +449,7 @@ def get_daily_stats():
                 db.func.strftime(date_format, Post.created_at)
             ).all()
         
-        # 查询活跃用户数（最近7天有登录或注册的用户）
+        # 查询活跃用户数
         # 注意：这里的"活跃用户"是指最近7天有操作的用户，与get_stats()中的"active"（可用用户）不同
         # - get_stats()中的"active"：没有被封禁或封禁已过期的用户（可用用户）
         # - 这里的"active_users"：最近7天有登录或注册的用户（活跃用户）
@@ -1383,6 +1383,7 @@ def export_posts_excel():
             raise e
     except Exception as e:
         return error(message=f"导出Excel失败: {str(e)}")
+
 
 
 
