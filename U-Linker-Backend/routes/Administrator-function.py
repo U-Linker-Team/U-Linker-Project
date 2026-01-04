@@ -1,7 +1,7 @@
 """
 管理员功能路由
 功能：
-1. 学号精准索引用户全景记录（新增）
+1. 学号精准索引用户全景记录
 2. 查看所有用户信息
 3. 管理用户积分（支持争议撤销）
 4. 惩罚/解封用户
@@ -1383,6 +1383,7 @@ def export_posts_excel():
             raise e
     except Exception as e:
         return error(message=f"导出Excel失败: {str(e)}")
+
 
 
 
