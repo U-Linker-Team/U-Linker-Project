@@ -86,15 +86,18 @@ const goToChat = (sessionId) => {
 }
 
 // 简单的时间格式化
+  
 const formatTime = (timeStr) => {
   if (!timeStr) return ''
   const date = new Date(timeStr)
   const now = new Date()
   // 如果是今天的消息，只显示时间
+  
   if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
   // 否则显示日期
+  
   return date.toLocaleDateString()
 }
 
