@@ -51,7 +51,7 @@ export const useUserStore = defineStore('user', () => {
     if (local) {
       try {
         const parsed = JSON.parse(local)
-        // 从缓存读取时也要规范化，确保格式一致
+        // 从缓存读取时也要规范化，确保格式与登录时一致
         userInfo.value = normalizeUser(parsed)
       } catch(e) {
         console.error('解析用户缓存失败', e)
@@ -59,8 +59,8 @@ export const useUserStore = defineStore('user', () => {
     }
   }
   
-  // 立即执行初始化
+  // 立即执行初始化:在 store 创建时尝试恢复登录状态
   init()
-
+// 导出状态和方法
   return { userInfo, unreadCount, login, logout }
 })
