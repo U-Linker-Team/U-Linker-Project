@@ -227,3 +227,27 @@ class ViewHistory(db.Model):
             'post_id': self.post_id,
             'viewed_at': self.viewed_at.strftime('%Y-%m-%d %H:%M:%S')
         }
+
+# --- 9. 收藏模型 (新增) ---
+class Favorite(db.Model):
+    __tablename__ = 'favorites'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey('posts.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    
+    user = db.relationship('User', backref=db.backref('favorites', lazy=True))
+    post = db.relationship('Post', backref=db.backref('favorites', lazy=True))
+    
+    # 防止重复收藏（同一用户不能重复收藏同一帖子）
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'post_id', name='unique_user_favorite'),
+    )
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'post_id': self.post_id,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
