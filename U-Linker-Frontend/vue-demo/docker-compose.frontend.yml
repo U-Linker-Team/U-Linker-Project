@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  # 前端 Vue 应用
+  frontend:
+    build: .
+    container_name: u-linker-frontend
+    restart: always
+    ports:
+      - "80:80"  # 前端使用 80 端口
+    networks:
+      - u-linker-network  # 连接到后端网络
+    # 不需要 depends_on，因为后端可能还没启动
+
+networks:
+  u-linker-network:
+    external: true  # 使用外部网络（后端创建的网络）
+    name: u-linker-network
+
