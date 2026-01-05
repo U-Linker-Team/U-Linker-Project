@@ -1,7 +1,7 @@
 """
 管理员功能路由
 功能：
-1. 学号精准索引用户全景记录
+1. 学号精准索引用户全景记录（新增）
 2. 查看所有用户信息
 3. 管理用户积分（支持争议撤销）
 4. 惩罚/解封用户
@@ -20,6 +20,7 @@ from io import BytesIO
 import os
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
+
 # ================= 权限检查装饰器 =================
 def admin_required(f):
     """管理员权限检查装饰器 [cite: 106]"""
@@ -27,12 +28,12 @@ def admin_required(f):
         current_user_id = session.get('user_id')
         if not current_user_id:
             return error(message="请先登录")
-
+        
         current_user = db.session.get(User, current_user_id)
-        # 严格限制仅限管理员访问
+        # 严格限制仅限管理员访问 
         if not current_user or not current_user.is_admin:
             return error(message="权限不足：需要管理员权限")
-
+        
         return f(*args, **kwargs)
     wrapper.__name__ = f.__name__
     return wrapper
@@ -48,11 +49,11 @@ def get_user_by_student_id(sid):
     # 精准匹配学号 [cite: 215, 368]
     # 先尝试精确匹配
     user = User.query.filter_by(student_id=sid).first()
-
+    
     # 如果精确匹配失败，尝试字符串匹配（处理可能的空格或类型问题）
     if not user:
         user = User.query.filter(User.student_id == str(sid).strip()).first()
-
+    
     # 如果还是找不到，尝试模糊匹配（用于调试）
     if not user:
         # 调试：查看数据库中是否有类似的学号
@@ -60,17 +61,17 @@ def get_user_by_student_id(sid):
         if similar_users:
             similar_ids = [u.student_id for u in similar_users]
             return error(message=f"未找到学号 '{sid}' 对应的用户。相似的学号有：{', '.join(similar_ids)}")
-
+    
     if not user:
         return error(message=f"未找到学号 '{sid}' 对应的用户。请确认学号是否正确。")
 
-    # 获取该用户发布的“我需要”帖子 (Bounty)
+    # 获取该用户发布的“我需要”帖子 (Bounty) 
     i_need = Post.query.filter_by(author_id=user.id, post_type='bounty').order_by(desc(Post.created_at)).all()
-
+    
     # 获取该用户发布的“我能提供”帖子 (Service)
     i_provide = Post.query.filter_by(author_id=user.id, post_type='service').order_by(desc(Post.created_at)).all()
 
-    # 获取该用户的积分明细报表
+    # 获取该用户的积分明细报表 
     history = PointsHistory.query.filter_by(user_id=user.id).order_by(desc(PointsHistory.created_at)).all()
 
     return success(data={
@@ -79,7 +80,7 @@ def get_user_by_student_id(sid):
             'i_need': [p.to_dict() for p in i_need],      # 对应前端“我需要”选项
             'i_provide': [p.to_dict() for p in i_provide] # 对应前端“我提供”选项
         },
-        'points_history': [h.to_dict() for h in history]  # 对应积分记录，支持颜色规范
+        'points_history': [h.to_dict() for h in history]  # 对应积分记录，支持颜色规范 
     })
 
 # ================= 2. 获取所有用户列表 (支持模糊搜索) =================
@@ -88,7 +89,8 @@ def get_user_by_student_id(sid):
 def get_all_users():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('page_size', 20, type=int)
-    keyword = request.args.get('keyword', '')
+    keyword = request.args.get('keyword', '') 
+    
     query = User.query
     if keyword:
         keyword_pattern = f'%{keyword}%'
@@ -100,10 +102,10 @@ def get_all_users():
                 User.college.like(keyword_pattern)
             )
         )
-
+    
     query = query.order_by(desc(User.id))
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-
+    
     return success(data={
         'total': pagination.total,
         'items': [user.to_dict() for user in pagination.items]
@@ -168,6 +170,7 @@ def ban_user(user_id):
     # 阶梯式封禁逻辑
     ban_duration = ban_days * user.ban_count
     user.ban_until = datetime.now() + timedelta(days=ban_duration)
+    
     db.session.commit()
     
     # 返回封禁信息，供前端显示
@@ -216,14 +219,25 @@ def unban_user(user_id):
 def get_stats():
     """
     获取全站统计数据
-    注意：这里的"active"是指"可用用户"（没有被封禁或封禁已过期的用户）
-    与统计接口中的"active_users_last_7_days"（最近7天有操作的用户）是不同的概念
+    注意：
+    - "active"：可用用户（没有被封禁或封禁已过期的用户）
+    - "active_users_last_7_days"：活跃用户（最近7天有登录或注册的用户）
     """
+    # 计算活跃用户数（最近7天有登录或注册的用户）
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    active_users_last_7_days = User.query.filter(
+        or_(
+            User.last_login >= seven_days_ago,
+            User.created_at >= seven_days_ago
+        )
+    ).count()
+    
     return success(data={
         'users': {
             'total': User.query.count(),
             'active': User.query.filter(or_(User.ban_until.is_(None), User.ban_until < datetime.now())).count(),  # 可用用户：没有被封禁或封禁已过期
-            'banned': User.query.filter(User.ban_until.isnot(None)).filter(User.ban_until >= datetime.now()).count()
+            'banned': User.query.filter(User.ban_until.isnot(None)).filter(User.ban_until >= datetime.now()).count(),
+            'active_users_last_7_days': active_users_last_7_days  # 活跃用户：最近7天有操作的用户
         },
         'posts': {
             'total': Post.query.count()
@@ -342,6 +356,7 @@ def get_all_posts():
         'total': pagination.total,
         'items': items
     })
+
 # ================= 5.4 统计接口：每日新增用户和发帖量 =================
 @admin_bp.route('/stats/daily', methods=['GET'])
 @admin_required
@@ -448,7 +463,7 @@ def get_daily_stats():
                 db.func.strftime(date_format, Post.created_at)
             ).all()
         
-        # 查询活跃用户数
+        # 查询活跃用户数（最近7天有登录或注册的用户）
         # 注意：这里的"活跃用户"是指最近7天有操作的用户，与get_stats()中的"active"（可用用户）不同
         # - get_stats()中的"active"：没有被封禁或封禁已过期的用户（可用用户）
         # - 这里的"active_users"：最近7天有登录或注册的用户（活跃用户）
@@ -507,7 +522,7 @@ def get_daily_stats():
             
             # 填充帖子数据
             for stat in post_stats_query:
-                # 处理日期格式
+                # 处理日期格式：可能是datetime、date对象或字符串
                 if isinstance(stat.date, datetime):
                     date_str = stat.date.strftime('%Y-%m-%d')
                 elif hasattr(stat.date, 'strftime'):
@@ -637,7 +652,7 @@ def export_stats_excel():
         if start_date > end_date:
             return error(message="开始日期不能晚于结束日期")
         
-        # 获取统计数据 
+        # 获取统计数据 - 直接调用内部函数而不是视图函数
         # 复制 get_daily_stats 的查询逻辑
         date_format_map = {
             'day': '%Y-%m-%d',
@@ -1074,24 +1089,45 @@ def get_stats_charts():
                 elif stat.post_type == 'service':
                     date_stats[date_str]['services'] += stat.new_posts
         
-        # 转换为列表，确保顺序与dates一致
+        # 转换为列表，确保顺序与dates一致，并确保所有值都是整数（不能是None）
         for date_str in dates:
-            user_counts.append(date_stats[date_str]['users'])
-            post_counts.append(date_stats[date_str]['posts'])
-            bounty_counts.append(date_stats[date_str]['bounties'])
-            service_counts.append(date_stats[date_str]['services'])
+            user_counts.append(int(date_stats[date_str]['users'] or 0))
+            post_counts.append(int(date_stats[date_str]['posts'] or 0))
+            bounty_counts.append(int(date_stats[date_str]['bounties'] or 0))
+            service_counts.append(int(date_stats[date_str]['services'] or 0))
         
         # 根据不同图表类型组织数据
         chart_data = {}
         
         if chart_type == 'line':
             # 折线图数据 - 趋势分析，包含所有四种数据类型
+            # ECharts 标准格式
             chart_data = {
-                'type': 'line',
-                'title': f'系统数据趋势图 ({time_range})',
+                'title': {
+                    'text': f'系统数据趋势图 ({time_range})',
+                    'left': 'center',
+                    'textStyle': {
+                        'fontSize': 16,
+                        'fontWeight': 'bold'
+                    }
+                },
+                'tooltip': {
+                    'trigger': 'axis'
+                },
+                'legend': {
+                    'data': ['新增用户', '新增帖子', '悬赏任务', '服务任务'],
+                    'top': '10%'
+                },
+                'grid': {
+                    'left': '3%',
+                    'right': '4%',
+                    'bottom': '3%',
+                    'containLabel': True
+                },
                 'xAxis': {
                     'type': 'category',
-                    'data': dates
+                    'data': dates,
+                    'boundaryGap': False
                 },
                 'yAxis': {
                     'type': 'value',
@@ -1101,45 +1137,109 @@ def get_stats_charts():
                     {
                         'name': '新增用户',
                         'type': 'line',
-                        'data': user_counts,
-                        'smooth': True
+                        'data': [int(x or 0) for x in user_counts],  # 确保所有值都是整数，不能是None
+                        'smooth': True,
+                        'itemStyle': {
+                            'color': '#5470c6'
+                        }
                     },
                     {
                         'name': '新增帖子',
                         'type': 'line',
-                        'data': post_counts,
-                        'smooth': True
+                        'data': [int(x or 0) for x in post_counts],  # 确保所有值都是整数，不能是None
+                        'smooth': True,
+                        'itemStyle': {
+                            'color': '#91cc75'
+                        }
                     },
                     {
                         'name': '悬赏任务',
                         'type': 'line',
-                        'data': bounty_counts,
-                        'smooth': True
+                        'data': [int(x or 0) for x in bounty_counts],  # 确保所有值都是整数，不能是None
+                        'smooth': True,
+                        'itemStyle': {
+                            'color': '#fac858'
+                        }
                     },
                     {
                         'name': '服务任务',
                         'type': 'line',
-                        'data': service_counts,
-                        'smooth': True
+                        'data': [int(x or 0) for x in service_counts],  # 确保所有值都是整数，不能是None
+                        'smooth': True,
+                        'itemStyle': {
+                            'color': '#ee6666'
+                        }
                     }
                 ]
             }
         
         elif chart_type == 'bar':
             # 柱状图数据 - 对比分析
-            # 只显示最近10天的数据
-            recent_dates = dates[-10:] if len(dates) > 10 else dates
-            recent_users = user_counts[-10:] if len(user_counts) > 10 else user_counts
-            recent_posts = post_counts[-10:] if len(post_counts) > 10 else post_counts
-            recent_bounties = bounty_counts[-10:] if len(bounty_counts) > 10 else bounty_counts
-            recent_services = service_counts[-10:] if len(service_counts) > 10 else service_counts
+            # 只显示最近10天的数据，确保所有数组长度一致
+            max_days = min(10, len(dates))
+            recent_dates = dates[-max_days:] if len(dates) > max_days else dates
+            recent_users = user_counts[-max_days:] if len(user_counts) > max_days else user_counts
+            recent_posts = post_counts[-max_days:] if len(post_counts) > max_days else post_counts
+            recent_bounties = bounty_counts[-max_days:] if len(bounty_counts) > max_days else bounty_counts
+            recent_services = service_counts[-max_days:] if len(service_counts) > max_days else service_counts
             
+            # 确保所有数组长度一致，不足的用0填充，并确保所有值都是整数（不能是None）
+            target_length = len(recent_dates)
+            
+            # 确保所有值都是整数，不能是None
+            recent_users = [int(x or 0) for x in recent_users]
+            recent_posts = [int(x or 0) for x in recent_posts]
+            recent_bounties = [int(x or 0) for x in recent_bounties]
+            recent_services = [int(x or 0) for x in recent_services]
+            
+            # 确保长度一致
+            if len(recent_users) < target_length:
+                recent_users.extend([0] * (target_length - len(recent_users)))
+            if len(recent_posts) < target_length:
+                recent_posts.extend([0] * (target_length - len(recent_posts)))
+            if len(recent_bounties) < target_length:
+                recent_bounties.extend([0] * (target_length - len(recent_bounties)))
+            if len(recent_services) < target_length:
+                recent_services.extend([0] * (target_length - len(recent_services)))
+            
+            # 截取到目标长度，防止超出
+            recent_users = recent_users[:target_length]
+            recent_posts = recent_posts[:target_length]
+            recent_bounties = recent_bounties[:target_length]
+            recent_services = recent_services[:target_length]
+            
+            # ECharts 标准格式
             chart_data = {
-                'type': 'bar',
-                'title': f'数据对比图 (最近{len(recent_dates)}天)',
+                'title': {
+                    'text': f'数据对比图 (最近{len(recent_dates)}天)',
+                    'left': 'center',
+                    'textStyle': {
+                        'fontSize': 16,
+                        'fontWeight': 'bold'
+                    }
+                },
+                'tooltip': {
+                    'trigger': 'axis',
+                    'axisPointer': {
+                        'type': 'shadow'
+                    }
+                },
+                'legend': {
+                    'data': ['新增用户', '新增帖子', '悬赏任务', '服务任务'],
+                    'top': '10%'
+                },
+                'grid': {
+                    'left': '3%',
+                    'right': '4%',
+                    'bottom': '3%',
+                    'containLabel': True
+                },
                 'xAxis': {
                     'type': 'category',
-                    'data': recent_dates
+                    'data': recent_dates,
+                    'axisLabel': {
+                        'rotate': 45 if len(recent_dates) > 7 else 0
+                    }
                 },
                 'yAxis': {
                     'type': 'value',
@@ -1150,25 +1250,37 @@ def get_stats_charts():
                         'name': '新增用户',
                         'type': 'bar',
                         'data': recent_users,
-                        'barWidth': '40%'
+                        
+                        'itemStyle': {
+                            'color': '#5470c6'
+                        }
                     },
                     {
                         'name': '新增帖子',
                         'type': 'bar',
                         'data': recent_posts,
-                        'barWidth': '40%'
+                        
+                        'itemStyle': {
+                            'color': '#91cc75'
+                        }
                     },
                     {
                         'name': '悬赏任务',
                         'type': 'bar',
                         'data': recent_bounties,
-                        'barWidth': '40%'
+                        
+                        'itemStyle': {
+                            'color': '#fac858'
+                        }
                     },
                     {
                         'name': '服务任务',
                         'type': 'bar',
                         'data': recent_services,
-                        'barWidth': '40%'
+                       
+                        'itemStyle': {
+                            'color': '#ee6666'
+                        }
                     }
                 ]
             }
@@ -1217,8 +1329,22 @@ def get_stats_charts():
             ]
             
             chart_data = {
-                'type': 'pie',
-                'title': '数据分布图',
+                "title": {
+                    "text": f"数据分布图 ({time_range})",
+                    "left": "center",
+                    "textStyle": {
+                        "fontSize": 16,
+                        "fontWeight": "bold"
+                    }
+                },
+                "tooltip": {
+                    "trigger": "item",
+                    "formatter": "{a} <br/>{b}: {c} ({d}%)"
+                },
+                "legend": {
+                    "top": "10%",
+                    "left": "center"
+                },
                 'series': [
                     {
                         'name': '帖子类型分布',
@@ -1232,6 +1358,10 @@ def get_stats_charts():
                                 'shadowOffsetX': 0,
                                 'shadowColor': 'rgba(0, 0, 0, 0.5)'
                             }
+                        },
+                        'label': {
+                            'show': True,
+                            'formatter': '{b}: {c} ({d}%)'
                         }
                     },
                     {
@@ -1246,6 +1376,10 @@ def get_stats_charts():
                                 'shadowOffsetX': 0,
                                 'shadowColor': 'rgba(0, 0, 0, 0.5)'
                             }
+                        },
+                        'label': {
+                            'show': True,
+                            'formatter': '{b}: {c} ({d}%)'
                         }
                     }
                 ]
@@ -1282,7 +1416,7 @@ def get_stats_charts():
         
     except Exception as e:
         return error(message=f"获取图表数据失败: {str(e)}")
-        # ================= 6. 导出帖子为 Excel =================
+# ================= 6. 导出帖子为 Excel =================
 @admin_bp.route('/posts/export', methods=['GET'])
 @admin_required
 def export_posts_excel():
