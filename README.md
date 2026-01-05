@@ -1,6 +1,13 @@
 # U-Linker Project
 
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Vue](https://img.shields.io/badge/vue-3.5.22-green.svg)
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
+![Docker](https://img.shields.io/badge/docker-supported-blue.svg)
+
 U-Linker 是一款基于前后端分离架构的校园技能交换平台。
+
+已经部署好的云服务器链接: http://121.89.81.18/ (1月7号后可能会注销机子 待定)
 
 ## 🛠 技术栈 (Tech Stack)
 
@@ -24,7 +31,7 @@ U-Linker 是一款基于前后端分离架构的校园技能交换平台。
 
 ```
 U-Linker/
-├── Frontend/                    # Vue3 前端项目
+├──U-Linker-Frontend/                    # Vue3 前端项目
 │   ├── src/                    # 源代码目录
 │   │   ├── api/                # API接口
 │   │   ├── assets/             # 静态资源
@@ -49,7 +56,7 @@ U-Linker/
 │   ├── postcss.config.js       # PostCSS配置
 │   └── index.html              # HTML入口
 │
-└── Backend/                    # Flask 后端项目
+└──U-Linker-Backend/                    # Flask 后端项目
     ├── routes/                 # 路由模块
     │   ├── auth.py             # 认证路由
     │   ├── market.py           # 市场路由
@@ -257,7 +264,7 @@ npm run dev
 
 ### 后端环境变量
 
-创建 `Backend/.env` 文件：
+创建 `U-Linker-Backend/.env` 文件：
 
 ```env
 # Flask配置
@@ -279,7 +286,7 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:8080
 
 ### 前端环境变量（可选）
 
-如果需要，创建 `Frontend/.env` 文件：
+如果需要，创建 `U-Linker-Frontend/.env` 文件：
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000
