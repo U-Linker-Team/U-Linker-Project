@@ -1383,6 +1383,157 @@ def export_posts_excel():
     except Exception as e:
         return error(message=f"导出Excel失败: {str(e)}")
 
+# ================= 7. 从 Excel 导入帖子 =================
+@admin_bp.route('/posts/import', methods=['POST'])
+@admin_required
+def import_posts_excel():
+    """从 Excel 文件批量导入帖子"""
+    try:
+        # 检查是否有文件
+        if 'file' not in request.files:
+            return error(message="请选择要上传的 Excel 文件")
+        
+        file = request.files['file']
+        if file.filename == '':
+            return error(message="请选择要上传的 Excel 文件")
+        
+        # 检查文件扩展名
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            return error(message="只支持 Excel 文件 (.xlsx, .xls)")
+        
+        # 读取 Excel 文件
+        try:
+            df = pd.read_excel(file, sheet_name=0)  # 读取第一个工作表
+        except Exception as e:
+            return error(message=f"读取 Excel 文件失败: {str(e)}")
+        
+        # 检查必需的列
+        required_columns = ['标题', '内容', '价格(积分)', '类型', '作者用户名']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return error(message=f"Excel 文件缺少必需的列: {', '.join(missing_columns)}")
+        
+        # 获取当前用户（管理员）
+        current_user_id = session.get('user_id')
+        current_user = db.session.get(User, current_user_id)
+        
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        # 逐行处理数据
+        for index, row in df.iterrows():
+            try:
+                # 获取作者用户
+                author_username = str(row['作者用户名']).strip()
+                author = User.query.filter_by(username=author_username).first()
+                
+                if not author:
+                    errors.append(f"第 {index + 2} 行: 找不到用户名为 '{author_username}' 的用户")
+                    error_count += 1
+                    continue
+                
+                # 检查用户是否被封禁
+                if author.ban_until and author.ban_until >= datetime.now():
+                    errors.append(f"第 {index + 2} 行: 用户 '{author_username}' 已被封禁")
+                    error_count += 1
+                    continue
+                
+                # 检查是否是管理员（管理员不能发布帖子）
+                if author.is_admin:
+                    errors.append(f"第 {index + 2} 行: 管理员不能发布帖子")
+                    error_count += 1
+                    continue
+                
+                # 解析数据
+                title = str(row['标题']).strip()
+                content = str(row['内容']).strip()
+                
+                # 处理价格
+                try:
+                    price = float(row['价格(积分)'])
+                    if price < 0:
+                        errors.append(f"第 {index + 2} 行: 价格不能为负数")
+                        error_count += 1
+                        continue
+                    price = int(price)
+                except (ValueError, TypeError):
+                    errors.append(f"第 {index + 2} 行: 价格格式错误")
+                    error_count += 1
+                    continue
+                
+                # 处理类型
+                post_type_str = str(row['类型']).strip()
+                if post_type_str in ['悬赏', 'bounty']:
+                    post_type = 'bounty'
+                elif post_type_str in ['服务', 'service']:
+                    post_type = 'service'
+                else:
+                    errors.append(f"第 {index + 2} 行: 类型必须是 '悬赏' 或 '服务'")
+                    error_count += 1
+                    continue
+                
+                # 如果是悬赏任务，检查积分是否足够
+                if post_type == 'bounty' and author.points < price:
+                    errors.append(f"第 {index + 2} 行: 用户 '{author_username}' 积分不足（需要 {price}，当前 {author.points}）")
+                    error_count += 1
+                    continue
+                
+                # 创建帖子
+                new_post = Post(
+                    author_id=author.id,
+                    title=title,
+                    content=content,
+                    price=price,
+                    post_type=post_type,
+                    status='active'  # 默认为上架状态
+                )
+                
+                # 如果是悬赏任务，扣除积分
+                if post_type == 'bounty' and price > 0:
+                    author.points -= price
+                    # 记录积分流水
+                    history = PointsHistory(
+                        user_id=author.id,
+                        points_change=-price,
+                        action='批量导入悬赏',
+                        description=f"批量导入悬赏任务《{title}》，预扣除积分"
+                    )
+                    db.session.add(history)
+                
+                db.session.add(new_post)
+                success_count += 1
+                
+            except Exception as e:
+                errors.append(f"第 {index + 2} 行: 处理失败 - {str(e)}")
+                error_count += 1
+                continue
+        
+        # 提交所有更改
+        if success_count > 0:
+            db.session.commit()
+        
+        # 返回结果
+        result_message = f"导入完成：成功 {success_count} 条，失败 {error_count} 条"
+        if errors:
+            result_message += f"\n错误详情：\n" + "\n".join(errors[:10])  # 最多显示10个错误
+            if len(errors) > 10:
+                result_message += f"\n... 还有 {len(errors) - 10} 个错误"
+        
+        return success(
+            message=result_message,
+            data={
+                'success_count': success_count,
+                'error_count': error_count,
+                'errors': errors[:20]  # 返回前20个错误
+            }
+        )
+        
+    except Exception as e:
+        db.session.rollback()
+        return error(message=f"导入失败: {str(e)}")
+
+
 
 
 
