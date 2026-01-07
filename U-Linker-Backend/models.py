@@ -6,7 +6,7 @@ class User(db.Model):
     __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(512), nullable=False)  # 增加到512以支持scrypt长哈希
     name = db.Column(db.String(50))
     college = db.Column(db.String(50))
     student_id = db.Column(db.String(20), unique=True)
@@ -14,29 +14,30 @@ class User(db.Model):
     avatar = db.Column(db.String(200))
     failed_login_attempts = db.Column(db.Integer, default=0)
     lockout_until = db.Column(db.DateTime)
-    is_admin = db.Column(db.Boolean, default=False) 
+    is_admin = db.Column(db.Boolean, default=False)
+    ban_until = db.Column(db.DateTime)  # 封禁到期时间，None 表示未封禁
+    ban_count = db.Column(db.Integer, default=0)  # 封禁次数，用于计算封禁时长
+    created_at = db.Column(db.DateTime, default=datetime.now)  # 用户注册时间
+    last_login = db.Column(db.DateTime)  # 最后登录时间
 
     def to_dict(self):
-        # 如果头像是相对路径，拼接当前域名，确保前端能正确访问
-        avatar_url = self.avatar
-        try:
-            from flask import request
-            if avatar_url and avatar_url.startswith('/'):
-                avatar_url = request.host_url.rstrip('/') + avatar_url
-        except Exception:
-            # 非请求上下文下（如脚本运行）保持原样
-            pass
-
         return {
             'id': self.id,
             'username': self.username,
             'name': self.name,
+            # 学号：同时返回 snake_case 和 camelCase 以兼容前端不同命名风格
+            'student_id': self.student_id,
+            'studentId': self.student_id or '',  # camelCase 格式，JavaScript 标准
             'points': self.points,
-            'avatar': avatar_url,
+            'avatar': self.avatar,
             'college': self.college,
-            'is_admin': self.is_admin
+            'is_admin': self.is_admin,
+            'ban_until': self.ban_until.strftime('%Y-%m-%d %H:%M:%S') if self.ban_until else None,
+            'is_banned': self.ban_until is not None and self.ban_until > datetime.now() if self.ban_until else False,
+            'ban_count': self.ban_count or 0,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
+            'last_login': self.last_login.strftime('%Y-%m-%d %H:%M:%S') if self.last_login else None
         }
-
 # --- 2. 帖子模型 ---
 class Post(db.Model):
     __tablename__ = 'posts'
@@ -61,8 +62,10 @@ class Post(db.Model):
             'price': self.price,
             'post_type': self.post_type,
             'status': self.status,
+            'images': self.images,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
         }
+
 
 # --- 3. 申请记录模型 ---
 class Application(db.Model):
@@ -163,7 +166,11 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('chat_sessions.id'), nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    content = db.Column(db.String(500), nullable=False) # 文档限制500字符
+    content = db.Column(db.String(500))  # 文本内容，可为空（如果是图片/视频）
+    message_type = db.Column(db.String(20), default='text', nullable=False)  # text, image, video
+    file_url = db.Column(db.String(500))  # 图片或视频的URL
+    file_name = db.Column(db.String(200))  # 文件名
+    file_size = db.Column(db.Integer)  # 文件大小（字节）
     is_read = db.Column(db.Boolean, default=False)      # 未读/已读
     created_at = db.Column(db.DateTime, default=datetime.now)
 
@@ -178,6 +185,10 @@ class Message(db.Model):
             'sender_name': self.sender.username if self.sender else "未知用户",
             'sender_avatar': self.sender.avatar if self.sender else "",
             'content': self.content,
+            'message_type': self.message_type,
+            'file_url': self.file_url,
+            'file_name': self.file_name,
+            'file_size': self.file_size,
             'is_read': self.is_read,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
         }
