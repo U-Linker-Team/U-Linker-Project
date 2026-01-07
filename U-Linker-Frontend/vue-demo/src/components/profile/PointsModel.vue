@@ -1,4 +1,5 @@
 <!-- 我的-积分规则弹窗 -->
+<!-- 我的-积分规则弹窗 -->
 
 <template>
   <div v-if="isOpen" class="modal-overlay" @click.self="closeModal">
@@ -18,63 +19,17 @@
       <div class="modal-body" @scroll="handleScroll">
         <!-- 规则说明区域 -->
         <div class="rules-section">
-          <div class="rule-item">
-            <div class="rule-icon-bg bg-red-50">
-              <span class="iconify text-red-500" data-icon="mdi:lock-outline"></span>
-            </div>
-            <div class="rule-text">
-              <h4 class="rule-title">积分冻结规则</h4>
-              <p class="rule-desc">发布悬赏任务时，积分会被<span class="text-red-600 font-bold">冻结</span>，任务完成后转给帮助者。</p>
-            </div>
+          <div v-if="loadingRules" class="text-center py-8">
+            <div class="loading-icon"></div>
+            <p class="text-gray-500 mt-2">加载规则中...</p>
           </div>
-
-          <div class="rule-item">
-            <div class="rule-icon-bg bg-green-50">
-              <span class="iconify text-green-500" data-icon="mdi:refresh-circle-outline"></span>
+          <div v-else v-for="rule in rules" :key="rule.title" class="rule-item">
+            <div :class="`rule-icon-bg bg-${rule.color}-50`">
+              <span :class="`iconify text-${rule.color}-500`" :data-icon="rule.icon"></span>
             </div>
             <div class="rule-text">
-              <h4 class="rule-title">积分退还规则</h4>
-              <p class="rule-desc">任务取消后，冻结的积分将<span class="text-green-600 font-bold">退还</span>到您的账户。</p>
-            </div>
-          </div>
-
-          <div class="rule-item">
-            <div class="rule-icon-bg bg-blue-50">
-              <span class="iconify text-blue-500" data-icon="mdi:currency-usd"></span>
-            </div>
-            <div class="rule-text">
-              <h4 class="rule-title">服务交易规则</h4>
-              <p class="rule-desc">购买服务时，积分会被冻结，服务完成确认后转给卖家。</p>
-            </div>
-          </div>
-
-          <div class="rule-item">
-            <div class="rule-icon-bg bg-purple-50">
-              <span class="iconify text-purple-500" data-icon="mdi:bank-outline"></span>
-            </div>
-            <div class="rule-text">
-              <h4 class="rule-title">积分使用范围</h4>
-              <p class="rule-desc">积分不可提现，仅限平台内使用，可用于发布悬赏、购买服务等。</p>
-            </div>
-          </div>
-
-          <div class="rule-item">
-            <div class="rule-icon-bg bg-orange-50">
-              <span class="iconify text-orange-500" data-icon="mdi:alert-circle-outline"></span>
-            </div>
-            <div class="rule-text">
-              <h4 class="rule-title">违规处理规则</h4>
-              <p class="rule-desc">如有违规行为，平台有权扣除相应积分，严重者可能封禁账号。</p>
-            </div>
-          </div>
-
-          <div class="rule-item">
-            <div class="rule-icon-bg bg-yellow-50">
-              <span class="iconify text-yellow-500" data-icon="mdi:star-circle-outline"></span>
-            </div>
-            <div class="rule-text">
-              <h4 class="rule-title">积分有效期</h4>
-              <p class="rule-desc">积分有效期为一年，每年12月31日清零，请及时使用。</p>
+              <h4 class="rule-title">{{ rule.title }}</h4>
+              <p class="rule-desc" v-html="formatRuleDescription(rule.description)"></p>
             </div>
           </div>
         </div>
@@ -131,6 +86,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { getPointsRules } from '@/api/chat'
 
 const props = defineProps({
   isOpen: Boolean
@@ -142,6 +98,8 @@ const list = ref([])
 const loading = ref(false)
 const finished = ref(false)
 const page = ref(1)
+const rules = ref([])
+const loadingRules = ref(false)
 
 const closeModal = () => {
   emit('close')
@@ -251,6 +209,107 @@ const getRecordTypeIconColor = (type) => {
   return classMap[type] || 'text-gray-500'
 }
 
+// 格式化规则描述（高亮关键词）
+const formatRuleDescription = (desc) => {
+  return desc
+    .replace(/冻结/g, '<span class="text-red-600 font-bold">冻结</span>')
+    .replace(/退还/g, '<span class="text-green-600 font-bold">退还</span>')
+}
+
+// 获取积分规则
+const fetchRules = async () => {
+  loadingRules.value = true
+  try {
+    const res = await getPointsRules()
+    if (res.status === 'success' && res.data && res.data.rules) {
+      rules.value = res.data.rules
+    } else {
+      // 如果获取失败，使用默认规则
+      rules.value = [
+        {
+          title: '积分冻结规则',
+          description: '发布悬赏任务时，积分会被冻结，任务完成后转给帮助者。',
+          icon: 'mdi:lock-outline',
+          color: 'red'
+        },
+        {
+          title: '积分退还规则',
+          description: '任务取消后，冻结的积分将退还到您的账户。',
+          icon: 'mdi:refresh-circle-outline',
+          color: 'green'
+        },
+        {
+          title: '服务交易规则',
+          description: '购买服务时，积分会被冻结，服务完成确认后转给卖家。',
+          icon: 'mdi:currency-usd',
+          color: 'blue'
+        },
+        {
+          title: '积分使用范围',
+          description: '积分不可提现，仅限平台内使用，可用于发布悬赏、购买服务等。',
+          icon: 'mdi:bank-outline',
+          color: 'purple'
+        },
+        {
+          title: '违规处理规则',
+          description: '如有违规行为，平台有权扣除相应积分，严重者可能封禁账号。',
+          icon: 'mdi:alert-circle-outline',
+          color: 'orange'
+        },
+        {
+          title: '积分有效期',
+          description: '积分有效期为一年，每年12月31日清零，请及时使用。',
+          icon: 'mdi:star-circle-outline',
+          color: 'yellow'
+        }
+      ]
+    }
+  } catch (e) {
+    console.error('获取积分规则失败', e)
+    // 使用默认规则
+    rules.value = [
+      {
+        title: '积分冻结规则',
+        description: '发布悬赏任务时，积分会被冻结，任务完成后转给帮助者。',
+        icon: 'mdi:lock-outline',
+        color: 'red'
+      },
+      {
+        title: '积分退还规则',
+        description: '任务取消后，冻结的积分将退还到您的账户。',
+        icon: 'mdi:refresh-circle-outline',
+        color: 'green'
+      },
+      {
+        title: '服务交易规则',
+        description: '购买服务时，积分会被冻结，服务完成确认后转给卖家。',
+        icon: 'mdi:currency-usd',
+        color: 'blue'
+      },
+      {
+        title: '积分使用范围',
+        description: '积分不可提现，仅限平台内使用，可用于发布悬赏、购买服务等。',
+        icon: 'mdi:bank-outline',
+        color: 'purple'
+      },
+      {
+        title: '违规处理规则',
+        description: '如有违规行为，平台有权扣除相应积分，严重者可能封禁账号。',
+        icon: 'mdi:alert-circle-outline',
+        color: 'orange'
+      },
+      {
+        title: '积分有效期',
+        description: '积分有效期为一年，每年12月31日清零，请及时使用。',
+        icon: 'mdi:star-circle-outline',
+        color: 'yellow'
+      }
+    ]
+  } finally {
+    loadingRules.value = false
+  }
+}
+
 // 当弹窗打开时重置并加载数据
 watch(() => props.isOpen, (newVal) => {
   if (newVal) {
@@ -258,6 +317,7 @@ watch(() => props.isOpen, (newVal) => {
     page.value = 1
     finished.value = false
     loadData()
+    fetchRules() // 加载积分规则
   }
 })
 </script>
