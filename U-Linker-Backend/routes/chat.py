@@ -5,6 +5,8 @@ from utils.response import success, error
 from sqlalchemy import or_, and_
 from datetime import datetime
 import time
+import os
+from werkzeug.utils import secure_filename
 
 chat_bp = Blueprint('chat', __name__, url_prefix='/chat')
 
@@ -55,7 +57,7 @@ def create_session():
     return success(data={'session_id': chat_session.id})
 
 
-# ================= 2. 发送消息 (安全修复 + 权限检查) =================
+# ================= 2. 发送消息 (安全修复 + 权限检查 + 文件上传) =================
 # 对应前端：ChatDetail.vue 发送按钮
 @chat_bp.route('/send', methods=['POST'])
 def send_message():
@@ -64,36 +66,126 @@ def send_message():
     if not sender_id:
         return error(message="请先登录")
 
-    data = request.get_json()
-    session_id = data.get('session_id')
-    content = data.get('content')
-
-    if not content: return error(message="消息不能为空")
-    if len(content) > 500: return error(message="消息太长")
-
     # 2. 获取会话
+    if request.is_json:
+        data = request.get_json()
+        session_id = data.get('session_id')
+    else:
+        session_id = request.form.get('session_id')
+    
+    if not session_id:
+        return error(message="缺少session_id")
+    
+    try:
+        session_id = int(session_id)
+    except (ValueError, TypeError):
+        return error(message="session_id格式错误")
     chat_session = db.session.get(ChatSession, session_id)
     if not chat_session: 
         return error(message="会话不存在")
 
     # 3. 【核心安全检查】确保发送者是这个会话的成员
-    # 防止恶意用户随便拿一个 session_id 往别人的聊天里插话
     if sender_id != chat_session.user1_id and sender_id != chat_session.user2_id:
         return error(message="您不是该会话的成员，无权发送消息")
 
     current_time = datetime.now()
 
     try:
-        # 4. 创建消息
+        # 4. 检查是否有文件上传
+        message_type = 'text'
+        content = None
+        file_url = None
+        file_name = None
+        file_size = None
+
+        if 'file' in request.files:
+            file = request.files['file']
+            if file and file.filename:
+                # 文件上传
+                original_filename = file.filename
+                # 先提取原始扩展名（在secure_filename之前）
+                original_ext = os.path.splitext(original_filename)[1].lower()
+                
+                # 验证文件类型（基于原始文件名，避免secure_filename改变扩展名）
+                allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.mov', '.avi', '.webm', '.mkv'}
+                
+                # 检查原始扩展名
+                if original_ext not in allowed_extensions:
+                    print(f"❌ 文件类型验证失败: 原始文件名={original_filename}, 扩展名={original_ext}, 允许的扩展名={allowed_extensions}")
+                    return error(message=f"不支持的文件类型（{original_ext}），仅支持图片和视频")
+                
+                # 使用secure_filename处理文件名（保留扩展名）
+                safe_name = secure_filename(original_filename)
+                # 如果secure_filename改变了文件名，使用原始扩展名重新构建
+                safe_ext = os.path.splitext(safe_name)[1].lower()
+                if safe_ext != original_ext:
+                    print(f"⚠️ secure_filename改变了扩展名: {safe_ext} -> {original_ext}, 使用原始扩展名")
+                    safe_name = os.path.splitext(safe_name)[0] + original_ext
+                
+                filename = safe_name
+                
+                # 根据扩展名或MIME类型确定消息类型
+                if original_ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                    message_type = 'image'
+                elif original_ext in ['.mp4', '.mov', '.avi', '.webm', '.mkv']:
+                    message_type = 'video'
+                elif file.content_type.startswith('image/'):
+                    message_type = 'image'
+                elif file.content_type.startswith('video/'):
+                    message_type = 'video'
+                else:
+                    message_type = 'file'
+                
+                print(f"✅ 文件验证通过: 文件名={filename}, 扩展名={original_ext}, 类型={message_type}, MIME={file.content_type}")
+                
+                # 验证文件大小（最大20MB）
+                file.seek(0, os.SEEK_END)
+                file_size = file.tell()
+                file.seek(0)
+                
+                if file_size > 20 * 1024 * 1024:  # 20MB
+                    return error(message="文件大小不能超过20MB")
+                
+                # 保存文件
+                upload_folder = os.path.join(os.getcwd(), 'uploads', 'chat')
+                os.makedirs(upload_folder, exist_ok=True)
+                
+                # 生成唯一文件名
+                timestamp = int(current_time.timestamp())
+                unique_filename = f"{sender_id}_{timestamp}_{filename}"
+                file_path = os.path.join(upload_folder, unique_filename)
+                file.save(file_path)
+                
+                # 生成访问URL
+                file_url = f"/uploads/chat/{unique_filename}"
+                file_name = filename
+        else:
+            # 文本消息
+            if request.is_json:
+                data = request.get_json()
+                content = data.get('content', '').strip()
+            else:
+                content = request.form.get('content', '').strip()
+            
+            if not content:
+                return error(message="消息不能为空")
+            if len(content) > 500:
+                return error(message="消息太长")
+
+        # 5. 创建消息
         msg = Message(
             session_id=session_id,
-            sender_id=sender_id, # 强制使用当前登录用户
+            sender_id=sender_id,
             content=content,
+            message_type=message_type,
+            file_url=file_url,
+            file_name=file_name,
+            file_size=file_size,
             created_at=current_time,
             is_read=False 
         )
 
-        # 5. 更新会话时间 (用于列表排序，把最新的聊天顶上去)
+        # 6. 更新会话时间
         chat_session.updated_at = current_time
 
         db.session.add(msg)
@@ -253,3 +345,49 @@ def get_global_unread():
             _unread_cache.pop(key, None)
 
     return success(data={'total_unread': total})
+
+
+# ================= 6. 【新增】获取积分规则 =================
+# 注意：这个路由虽然放在chat模块，但实际是通用的积分规则接口
+@chat_bp.route('/points_rules', methods=['GET'])
+def get_points_rules():
+    """获取积分规则"""
+    rules = [
+        {
+            'title': '积分冻结规则',
+            'description': '发布悬赏任务时，积分会被冻结，任务完成后转给帮助者。',
+            'icon': 'mdi:lock-outline',
+            'color': 'red'
+        },
+        {
+            'title': '积分退还规则',
+            'description': '任务取消后，冻结的积分将退还到您的账户。',
+            'icon': 'mdi:refresh-circle-outline',
+            'color': 'green'
+        },
+        {
+            'title': '服务交易规则',
+            'description': '购买服务时，积分会被冻结，服务完成确认后转给卖家。',
+            'icon': 'mdi:currency-usd',
+            'color': 'blue'
+        },
+        {
+            'title': '积分使用范围',
+            'description': '积分不可提现，仅限平台内使用，可用于发布悬赏、购买服务等。',
+            'icon': 'mdi:bank-outline',
+            'color': 'purple'
+        },
+        {
+            'title': '违规处理规则',
+            'description': '如有违规行为，平台有权扣除相应积分，严重者可能封禁账号。',
+            'icon': 'mdi:alert-circle-outline',
+            'color': 'orange'
+        },
+        {
+            'title': '积分有效期',
+            'description': '积分有效期为一年，每年12月31日清零，请及时使用。',
+            'icon': 'mdi:star-circle-outline',
+            'color': 'yellow'
+        }
+    ]
+    return success(data={'rules': rules})
