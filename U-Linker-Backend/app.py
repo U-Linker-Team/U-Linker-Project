@@ -1,4 +1,4 @@
-rom flask import Flask, send_from_directory, jsonify
+from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 from extensions import db
@@ -28,7 +28,7 @@ def create_app():
         mysql_user = os.getenv('MYSQL_USER')
         mysql_password = os.getenv('MYSQL_PASSWORD')
         mysql_database = os.getenv('MYSQL_DATABASE')
-        mysql_host = os.getenv('MYSQL_HOST', 'mysql')  # 使用服务名'mysql'
+        mysql_host = os.getenv('MYSQL_HOST', 'mysql')  # 默认使用服务名 'mysql'
         mysql_port = os.getenv('MYSQL_PORT', '3306')
         
         if mysql_user and mysql_password and mysql_database:
@@ -41,7 +41,8 @@ def create_app():
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'u-linker-secret')  # 从环境变量读取，默认值仅用于开发
     # 上传文件配置
     app.config['UPLOAD_FOLDER'] = 'uploads'
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+    # 与前端 Nginx（20M）以及聊天上传逻辑（20MB）保持一致
+    app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20MB max file size
     
     # 确保 uploads 文件夹存在
     upload_folder = app.config['UPLOAD_FOLDER']
@@ -117,6 +118,13 @@ def create_app():
             os.path.join(app.root_path, 'static'),
             filename
         )
+    
+    # 提供聊天文件服务
+    @app.route('/uploads/chat/<path:filename>')
+    def chat_file(filename):
+        """提供聊天上传文件的访问服务"""
+        upload_folder = os.path.join(app.root_path, 'uploads', 'chat')
+        return send_from_directory(upload_folder, filename)
 
     with app.app_context():
         db.create_all()
